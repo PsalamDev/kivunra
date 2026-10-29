@@ -1,0 +1,12 @@
+# build output
+.next
+out
+build
+coverage
+
+# dependencies
+node_modules
+
+# generated / static assets
+next-env.d.ts
+public
