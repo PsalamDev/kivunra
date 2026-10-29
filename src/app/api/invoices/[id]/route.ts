@@ -1,149 +1,174 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+import { apiError, databaseErrorResponse } from '@/lib/api-error'
+import { INVOICE_SELECT, serializeInvoice } from '@/lib/invoices'
+import { createInvoiceToken, hashInvoiceToken, isInvoiceTokenConfigured } from '@/lib/public-token'
 import { createClient } from '@/lib/supabase/server'
+import { updateInvoiceSchema } from '@/lib/validation'
 
-interface InvoiceItemInput {
-  description: string
-  quantity?: number | string
-  unit_price?: number | string
+type RouteContext = { params: Promise<{ id: string }> }
+
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  const { id } = await params
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return apiError(401, 'Unauthorized')
+  }
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .select(INVOICE_SELECT)
+    .eq('id', id)
+    .eq('owner_user_id', user.id)
+    .maybeSingle()
+
+  if (error) {
+    return databaseErrorResponse(error)
+  }
+
+  if (!data) {
+    return apiError(404, 'Invoice not found')
+  }
+
+  return NextResponse.json({
+    invoice: serializeInvoice(data, process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin),
+  })
 }
 
-interface InvoiceUpdateBody {
-  status?: string
-  items?: InvoiceItemInput[]
-  customer_id?: string | null
-  due_at?: string | null
-}
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  const { id } = await params
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  if (!user) {
+    return apiError(401, 'Unauthorized')
+  }
 
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*, customers(*), invoice_items(*)')
-      .eq('id', id)
+  const body = await request.json().catch(() => null)
+  const parsed = updateInvoiceSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return apiError(400, 'Invalid invoice data', { issues: parsed.error.issues })
+  }
+
+  const { status, items, customer_id, due_at } = parsed.data
+
+  const { data: existing, error: findError } = await supabase
+    .from('invoices')
+    .select('id, status, public_token_hash')
+    .eq('id', id)
+    .eq('owner_user_id', user.id)
+    .maybeSingle()
+
+  if (findError) {
+    return databaseErrorResponse(findError)
+  }
+
+  if (!existing) {
+    return apiError(404, 'Invoice not found')
+  }
+
+  if (customer_id) {
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('id', customer_id)
       .eq('owner_user_id', user.id)
-      .single()
+      .maybeSingle()
+
+    if (!customer) {
+      return apiError(400, 'Customer not found')
+    }
+  }
+
+  // Atomic delete + insert + total recalculation.
+  if (items) {
+    const { error } = await supabase.rpc('replace_invoice_items', {
+      p_invoice_id: id,
+      p_items: items,
+    })
 
     if (error) {
-      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+      return databaseErrorResponse(error)
     }
-
-    return NextResponse.json({ invoice: data })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-}
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+  const updates: Record<string, unknown> = {}
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (status) {
+    updates.status = status
+
+    if (status === 'Published' && !existing.public_token_hash) {
+      if (!isInvoiceTokenConfigured()) {
+        return apiError(
+          500,
+          'Public invoice links are not configured. Set INVOICE_TOKEN_SECRET on the server.'
+        )
+      }
+      updates.public_token_hash = hashInvoiceToken(createInvoiceToken(id))
     }
+  }
 
-    const body = (await request.json()) as InvoiceUpdateBody
-    const { status, items, customer_id, due_at } = body
+  if (customer_id !== undefined) updates.customer_id = customer_id
+  if (due_at !== undefined) updates.due_at = due_at
 
-    const updateData: {
-      status?: string
-      customer_id?: string | null
-      due_at?: string | null
-      total?: number
-    } = {}
-
-    if (status) updateData.status = status
-    if (customer_id !== undefined) updateData.customer_id = customer_id
-    if (due_at !== undefined) updateData.due_at = due_at
-
-    if (items) {
-      let total = 0
-      const itemsWithTotals = items.map((item) => {
-        const lineTotal = (Number(item.quantity) || 1) * (Number(item.unit_price) || 0)
-        total += lineTotal
-        return {
-          description: item.description,
-          quantity: Number(item.quantity) || 1,
-          unit_price: Number(item.unit_price) || 0,
-          line_total: lineTotal,
-        }
-      })
-      updateData.total = total
-
-      await supabase.from('invoice_items').delete().eq('invoice_id', id)
-
-      const itemsToInsert = itemsWithTotals.map((item) => ({
-        invoice_id: id,
-        ...item,
-      }))
-
-      await supabase.from('invoice_items').insert(itemsToInsert)
-    }
-
+  if (Object.keys(updates).length > 0) {
     const { error } = await supabase
       .from('invoices')
-      .update(updateData)
+      .update(updates)
       .eq('id', id)
       .eq('owner_user_id', user.id)
-      .select()
-      .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return databaseErrorResponse(error)
     }
-
-    const { data: fullInvoice } = await supabase
-      .from('invoices')
-      .select('*, customers(*), invoice_items(*)')
-      .eq('id', id)
-      .single()
-
-    return NextResponse.json({ invoice: fullInvoice })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+
+  const { data: invoice, error: fetchError } = await supabase
+    .from('invoices')
+    .select(INVOICE_SELECT)
+    .eq('id', id)
+    .eq('owner_user_id', user.id)
+    .single()
+
+  if (fetchError) {
+    return databaseErrorResponse(fetchError)
+  }
+
+  return NextResponse.json({
+    invoice: serializeInvoice(invoice, process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin),
+  })
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+  const { id } = await params
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    const { error } = await supabase
-      .from('invoices')
-      .delete()
-      .eq('id', id)
-      .eq('owner_user_id', user.id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  if (!user) {
+    return apiError(401, 'Unauthorized')
   }
+
+  const { error } = await supabase
+    .from('invoices')
+    .delete()
+    .eq('id', id)
+    .eq('owner_user_id', user.id)
+
+  if (error) {
+    return databaseErrorResponse(error)
+  }
+
+  return NextResponse.json({ success: true })
 }

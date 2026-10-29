@@ -1,67 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+import { apiError, databaseErrorResponse } from '@/lib/api-error'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET() {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('owner_user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        return NextResponse.json({ customers: [] })
-      }
-
-      return NextResponse.json({ customers: data || [] })
-    } catch {
-      return NextResponse.json({ customers: [] })
-    }
-  } catch {
-    return NextResponse.json({ customers: [] })
+  if (!user) {
+    return apiError(401, 'Unauthorized')
   }
+
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('owner_user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    return databaseErrorResponse(error)
+  }
+
+  return NextResponse.json({ customers: data ?? [] })
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const body = (await request.json()) as { name?: string; email?: string | null }
-    const { name, email } = body
-
-    if (!name) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
-    }
-
-    const { data, error } = await supabase
-      .from('customers')
-      .insert({
-        owner_user_id: user.id,
-        name,
-        email,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ customer: data }, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  if (!user) {
+    return apiError(401, 'Unauthorized')
   }
+
+  const body = (await request.json().catch(() => null)) as
+    | { name?: unknown; email?: unknown }
+    | null
+
+  const name = typeof body?.name === 'string' ? body.name.trim() : ''
+  const email = typeof body?.email === 'string' ? body.email.trim() : ''
+
+  if (!name) {
+    return apiError(400, 'Name is required')
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return apiError(400, 'Enter a valid email address')
+  }
+
+  const { data, error } = await supabase
+    .from('customers')
+    .insert({
+      owner_user_id: user.id,
+      name,
+      email: email || null,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    return databaseErrorResponse(error)
+  }
+
+  return NextResponse.json({ customer: data }, { status: 201 })
 }

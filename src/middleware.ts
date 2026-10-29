@@ -16,6 +16,14 @@ export async function middleware(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
+    // Fail API calls loudly instead of letting each route throw a 500.
+    if (request.nextUrl.pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'Supabase is not configured on this deployment.' },
+        { status: 503 }
+      )
+    }
+
     return supabaseResponse
   }
 

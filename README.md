@@ -31,3 +31,26 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser.
+
+## Database setup
+
+Apply the migrations in order (Supabase SQL editor or CLI):
+
+1. `supabase/migrations/001_initial_schema.sql`
+2. `supabase/migrations/002_invoice_hardening.sql`
+
+Migration 002 adds atomic invoice RPCs, race-free invoice numbering, the
+hashed public pay-link index and the missing RLS policies.
+
+## Required environment variables
+
+See `.env.example`. In addition to the Supabase keys, set
+`INVOICE_TOKEN_SECRET` to a random value of at least 32 characters
+(`openssl rand -hex 32`). It signs public invoice links — rotating it
+invalidates every existing pay link.
+
+## Checks
+
+```bash
+npm run check   # lint + typecheck + build
+```

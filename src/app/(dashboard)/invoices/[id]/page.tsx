@@ -23,6 +23,7 @@ interface Invoice {
   status: string
   due_at: string | null
   created_at: string
+  public_url: string | null
   customers?: { name: string; email: string } | null
   invoice_items: InvoiceItem[]
 }
@@ -33,6 +34,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
 
   const fetchInvoice = useCallback(async () => {
     try {
@@ -54,6 +56,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   const publishInvoice = async () => {
     setPublishing(true)
+    setPublishError(null)
     try {
       const res = await fetch(`/api/invoices/${id}`, {
         method: 'PATCH',
@@ -63,9 +66,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
       if (res.ok) {
         fetchInvoice()
+      } else {
+        const data = await res.json().catch(() => null)
+        setPublishError(data?.error || 'Failed to publish invoice')
       }
     } catch (error) {
       console.error('Error publishing invoice:', error)
+      setPublishError('Failed to publish invoice')
     } finally {
       setPublishing(false)
     }
@@ -122,6 +129,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           )}
         </div>
       </div>
+      {publishError && (
+        <div className="mb-6 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {publishError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <Card>
@@ -192,16 +204,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </CardContent>
       </Card>
 
-      {invoice.status === 'Published' && (
+      {invoice.public_url && (
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Payment</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-600 mb-4">Share this invoice for payment:</p>
+            <p className="text-gray-600 mb-4">Share this secure link with your customer:</p>
             <div className="flex gap-2">
-              <Input value={`${window.location.origin}/pay/${invoice.id}`} readOnly />
-              <Button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/pay/${invoice.id}`)}>
+              <Input value={invoice.public_url} readOnly />
+              <Button
+                onClick={() => {
+                  if (invoice.public_url) {
+                    navigator.clipboard.writeText(invoice.public_url)
+                  }
+                }}
+              >
                 Copy Link
               </Button>
             </div>
