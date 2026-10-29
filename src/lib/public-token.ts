@@ -19,6 +19,13 @@ export function isInvoiceTokenConfigured(): boolean {
   return Boolean(secret && secret.length >= MIN_SECRET_LENGTH)
 }
 
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,128}$/
+
+/** Cheap shape check so malformed tokens never reach the database. */
+export function isInvoiceTokenShape(token: string): boolean {
+  return TOKEN_PATTERN.test(token)
+}
+
 /**
  * Deterministic capability token for an invoice.
  *

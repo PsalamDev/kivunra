@@ -1,22 +1,39 @@
 import { redirect } from 'next/navigation'
 
-import { InvoiceStatusBadge } from '@/components/invoice-status-badge'
+import { PaymentStatusBadge } from '@/components/payment-status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDate, formatMoney } from '@/lib/format'
 import { sumByCurrency } from '@/lib/invoices'
 import { createClient } from '@/lib/supabase/server'
 
-interface PaymentOrder {
+interface CaptureInvoice {
+  invoice_number: string
+  customers: { name: string } | null
+}
+
+interface PaymentCapture {
   id: string
-  status: string
-  expected_amount: number | string | null
+  amount: number | string | null
   currency: string
-  created_at: string
-  invoices: {
-    invoice_number: string
-    customers: { name: string } | null
-  } | null
+  status: string
+  captured_at: string
+  payment_orders:
+    | {
+        paypal_order_id: string | null
+        invoices: CaptureInvoice | CaptureInvoice[] | null
+      }
+    | Array<{
+        paypal_order_id: string | null
+        invoices: CaptureInvoice | CaptureInvoice[] | null
+      }>
+    | null
+}
+
+function normaliseOrder(row: PaymentCapture) {
+  const order = Array.isArray(row.payment_orders) ? row.payment_orders[0] : row.payment_orders
+  const invoice = Array.isArray(order?.invoices) ? order?.invoices[0] : order?.invoices
+  return { order: order ?? null, invoice: invoice ?? null }
 }
 
 export default async function PaymentsPage() {
@@ -30,18 +47,19 @@ export default async function PaymentsPage() {
   }
 
   const { data, error } = await supabase
-    .from('payment_orders')
-    .select('id, status, expected_amount, currency, created_at, invoices(invoice_number, customers(name))')
-    .order('created_at', { ascending: false })
+    .from('payment_captures')
+    .select(
+      'id, amount, currency, status, captured_at, payment_orders(paypal_order_id, invoices(invoice_number, customers(name)))'
+    )
+    .order('captured_at', { ascending: false })
     .limit(100)
 
-  const payments = (data ?? []) as unknown as PaymentOrder[]
-  const captured = payments.filter((payment) => payment.status === 'Captured')
+  const captures = (data ?? []) as unknown as PaymentCapture[]
+  const completed = captures.filter((capture) => capture.status === 'COMPLETED')
+  const pending = captures.filter((capture) => capture.status === 'PENDING')
+
   const capturedTotals = sumByCurrency(
-    captured.map((payment) => ({
-      total: payment.expected_amount,
-      currency: payment.currency,
-    }))
+    completed.map((capture) => ({ total: capture.amount, currency: capture.currency }))
   )
 
   return (
@@ -66,18 +84,20 @@ export default async function PaymentsPage() {
               </div>
             )}
             <p className="text-sm text-gray-500 mt-2">
-              {captured.length} captured {captured.length === 1 ? 'payment' : 'payments'}
+              {completed.length} completed {completed.length === 1 ? 'payment' : 'payments'}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium text-gray-500">Payment Orders</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">Pending</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-[#12243A]">{payments.length}</p>
-            <p className="text-sm text-gray-500 mt-2">Across all invoices</p>
+            <p className="text-2xl font-bold text-[#12243A]">{pending.length}</p>
+            <p className="text-sm text-gray-500 mt-2">
+              Waiting for PayPal confirmation
+            </p>
           </CardContent>
         </Card>
 
@@ -87,8 +107,8 @@ export default async function PaymentsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600">
-              PayPal checkout is the next milestone. Published invoices already have a secure
-              public pay link on their detail page.
+              PayPal checkout is live on published invoices. Share an invoice&apos;s pay link
+              to collect card or PayPal payments.
             </p>
           </CardContent>
         </Card>
@@ -101,11 +121,11 @@ export default async function PaymentsPage() {
         <CardContent>
           {error ? (
             <p className="text-red-700">
-              Could not load payments. Make sure migration 002 has been applied.
+              Could not load payments. Make sure migration 003 has been applied.
             </p>
-          ) : payments.length === 0 ? (
+          ) : captures.length === 0 ? (
             <p className="text-gray-500">
-              No payments yet. Once PayPal checkout is enabled, captured payments will appear here.
+              No payments yet. Captured PayPal payments will appear here.
             </p>
           ) : (
             <Table>
@@ -115,25 +135,29 @@ export default async function PaymentsPage() {
                   <TableHead>Customer</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Captured</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell className="font-medium">
-                      {payment.invoices?.invoice_number ?? '—'}
-                    </TableCell>
-                    <TableCell>{payment.invoices?.customers?.name ?? '—'}</TableCell>
-                    <TableCell>
-                      {formatMoney(payment.currency, Number(payment.expected_amount ?? 0))}
-                    </TableCell>
-                    <TableCell>
-                      <InvoiceStatusBadge status={payment.status} />
-                    </TableCell>
-                    <TableCell>{formatDate(payment.created_at)}</TableCell>
-                  </TableRow>
-                ))}
+                {captures.map((capture) => {
+                  const { invoice } = normaliseOrder(capture)
+
+                  return (
+                    <TableRow key={capture.id}>
+                      <TableCell className="font-medium">
+                        {invoice?.invoice_number ?? '—'}
+                      </TableCell>
+                      <TableCell>{invoice?.customers?.name ?? '—'}</TableCell>
+                      <TableCell>
+                        {formatMoney(capture.currency, Number(capture.amount ?? 0))}
+                      </TableCell>
+                      <TableCell>
+                        <PaymentStatusBadge status={capture.status} />
+                      </TableCell>
+                      <TableCell>{formatDate(capture.captured_at)}</TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

@@ -4,6 +4,11 @@ import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMonthLabel, formatMoney } from '@/lib/format'
+import {
+  remainingBalance,
+  sumCapturedByInvoice,
+  type PaymentCaptureJoinRow,
+} from '@/lib/payments'
 import { createClient } from '@/lib/supabase/server'
 
 import { MonthlyChart, type MonthlyPoint } from './monthly-chart'
@@ -12,10 +17,17 @@ const MONTH_WINDOW = 6
 const OUTSTANDING_STATUSES = ['Published', 'PartiallyPaid', 'Overdue']
 
 interface InsightInvoice {
+  id: string
   status: string
   total: number | string | null
   currency: string
   created_at: string
+}
+
+interface LedgerIncomeRow {
+  amount: number | string | null
+  currency: string
+  posted_at: string
 }
 
 function monthBuckets() {
@@ -47,13 +59,27 @@ export default async function InsightsPage() {
   const buckets = monthBuckets()
   const rangeStart = buckets[0].start.toISOString()
 
-  const { data, error } = await supabase
-    .from('invoices')
-    .select('status, total, currency, created_at')
-    .eq('owner_user_id', user.id)
-    .gte('created_at', rangeStart)
+  const [invoiceResult, captureResult, ledgerResult] = await Promise.all([
+    supabase
+      .from('invoices')
+      .select('id, status, total, currency, created_at')
+      .eq('owner_user_id', user.id)
+      .gte('created_at', rangeStart),
+    supabase
+      .from('payment_captures')
+      .select('amount, status, payment_orders!inner(invoice_id)')
+      .eq('status', 'COMPLETED'),
+    supabase
+      .from('ledger_entries')
+      .select('amount, currency, posted_at')
+      .eq('owner_user_id', user.id)
+      .eq('direction', 'Income')
+      .gte('posted_at', rangeStart),
+  ])
 
-  const invoices = (data ?? []) as InsightInvoice[]
+  const invoices = (invoiceResult.data ?? []) as unknown as InsightInvoice[]
+  const captures = (captureResult.data ?? []) as unknown as PaymentCaptureJoinRow[]
+  const ledger = (ledgerResult.data ?? []) as unknown as LedgerIncomeRow[]
 
   const currencyCounts = new Map<string, number>()
   for (const invoice of invoices) {
@@ -64,12 +90,21 @@ export default async function InsightsPage() {
 
   const scoped = invoices.filter((invoice) => invoice.currency === primaryCurrency)
   const invoicedTotal = scoped.reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0)
-  const collectedTotal = scoped
-    .filter((invoice) => invoice.status === 'Paid')
-    .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0)
+
+  const scopedLedger = ledger.filter((entry) => entry.currency === primaryCurrency)
+  const collectedTotal = scopedLedger.reduce(
+    (sum, entry) => sum + Number(entry.amount ?? 0),
+    0
+  )
+
+  const capturedByInvoice = sumCapturedByInvoice(captures)
   const outstandingTotal = scoped
     .filter((invoice) => OUTSTANDING_STATUSES.includes(invoice.status))
-    .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0)
+    .reduce(
+      (sum, invoice) =>
+        sum + remainingBalance(invoice.total, capturedByInvoice.get(invoice.id)),
+      0
+    )
 
   const points: MonthlyPoint[] = buckets.map((bucket) => ({
     month: bucket.label,
@@ -83,12 +118,18 @@ export default async function InsightsPage() {
     const index = indexByKey.get(key)
     if (index === undefined) continue
 
-    const amount = Number(invoice.total ?? 0)
-    points[index].invoiced += amount
-    if (invoice.status === 'Paid') {
-      points[index].collected += amount
-    }
+    points[index].invoiced += Number(invoice.total ?? 0)
   }
+
+  for (const entry of scopedLedger) {
+    const key = String(entry.posted_at).slice(0, 7)
+    const index = indexByKey.get(key)
+    if (index === undefined) continue
+
+    points[index].collected += Number(entry.amount ?? 0)
+  }
+
+  const error = invoiceResult.error ?? captureResult.error ?? ledgerResult.error
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -158,7 +199,7 @@ export default async function InsightsPage() {
                 <p className="text-2xl font-bold text-[#12243A]">
                   {formatMoney(primaryCurrency, outstandingTotal)}
                 </p>
-                <p className="text-sm text-gray-500 mt-2">Published or partially paid</p>
+                <p className="text-sm text-gray-500 mt-2">Remaining on open invoices</p>
               </CardContent>
             </Card>
           </div>

@@ -5,32 +5,21 @@ import { InvoiceStatusBadge } from '@/components/invoice-status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDate, formatMoney } from '@/lib/format'
-import { hashInvoiceToken } from '@/lib/public-token'
-import { createAdminClient, isServiceRoleConfigured } from '@/lib/supabase/admin'
+import { isPayPalConfigured, isPayPalCurrency } from '@/lib/paypal'
+import {
+  completedCapturedAmount,
+  invoiceAmountDue,
+  loadPublicInvoice,
+} from '@/lib/public-invoice'
+import { isInvoiceTokenShape } from '@/lib/public-token'
+
+import { PayPalCheckout } from './paypal-checkout'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Invoice | Kivunra',
   robots: { index: false, follow: false },
-}
-
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,128}$/
-
-interface PublicInvoice {
-  invoice_number: string
-  total: number | string | null
-  currency: string
-  status: string
-  due_at: string | null
-  created_at: string
-  customers: { name: string } | null
-  invoice_items: Array<{
-    description: string
-    quantity: number | string
-    unit_price: number | string
-    line_total: number | string
-  }>
 }
 
 function Unavailable({ message }: { message: string }) {
@@ -54,40 +43,44 @@ export default async function PublicInvoicePage({
   const { token } = await params
 
   // Reject anything that cannot be one of our tokens before touching the DB.
-  if (!TOKEN_PATTERN.test(token)) {
+  if (!isInvoiceTokenShape(token)) {
     notFound()
   }
 
-  if (!isServiceRoleConfigured()) {
-    return <Unavailable message="Payment links are not configured for this deployment yet." />
-  }
+  const loaded = await loadPublicInvoice(token)
 
-  const admin = createAdminClient()
+  if (!loaded.ok) {
+    if (loaded.reason === 'not_found') {
+      notFound()
+    }
 
-  const { data, error } = await admin
-    .from('invoices')
-    .select(
-      'invoice_number, total, currency, status, due_at, created_at, customers(name), invoice_items(description, quantity, unit_price, line_total)'
+    return (
+      <Unavailable
+        message={
+          loaded.reason === 'not_configured'
+            ? 'Payment links are not configured for this deployment yet.'
+            : 'We could not load this invoice. Please try again later.'
+        }
+      />
     )
-    .eq('public_token_hash', hashInvoiceToken(token))
-    .maybeSingle()
-
-  if (error) {
-    return <Unavailable message="We could not load this invoice. Please try again later." />
   }
 
-  if (!data) {
-    notFound()
-  }
-
-  const invoice = data as unknown as PublicInvoice
+  const invoice = loaded.invoice
 
   if (invoice.status === 'Draft' || invoice.status === 'Cancelled') {
     notFound()
   }
 
-  const isPaid = invoice.status === 'Paid'
   const items = invoice.invoice_items ?? []
+  const total = Number(invoice.total ?? 0)
+  const paidToDate = completedCapturedAmount(invoice)
+  const amountDue = invoiceAmountDue(invoice)
+  const isPaid = invoice.status === 'Paid' || amountDue <= 0.01
+  const currency = invoice.currency.toUpperCase()
+
+  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
+  const canPayWithPayPal =
+    !isPaid && isPayPalConfigured() && Boolean(paypalClientId) && isPayPalCurrency(currency)
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -142,23 +135,54 @@ export default async function PublicInvoicePage({
                   </TableRow>
                 ))}
                 <TableRow>
-                  <TableCell colSpan={3} className="text-right font-bold">Amount due</TableCell>
+                  <TableCell colSpan={3} className="text-right font-bold">
+                    Invoice total
+                  </TableCell>
                   <TableCell className="text-right font-bold">
-                    {formatMoney(invoice.currency, Number(invoice.total ?? 0))}
+                    {formatMoney(invoice.currency, total)}
+                  </TableCell>
+                </TableRow>
+                {paidToDate > 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-right text-gray-600">
+                      Paid to date
+                    </TableCell>
+                    <TableCell className="text-right text-gray-600">
+                      −{formatMoney(invoice.currency, paidToDate)}
+                    </TableCell>
+                  </TableRow>
+                )}
+                <TableRow>
+                  <TableCell colSpan={3} className="text-right font-bold">
+                    Amount due
+                  </TableCell>
+                  <TableCell className="text-right font-bold">
+                    {formatMoney(invoice.currency, amountDue)}
                   </TableCell>
                 </TableRow>
               </TableBody>
             </Table>
 
-            <div className="mt-6 rounded-lg bg-gray-50 p-4 text-center">
-              {isPaid ? (
+            {isPaid ? (
+              <div className="mt-6 rounded-lg bg-green-50 p-4 text-center">
                 <p className="text-green-700 font-medium">Paid in full — thank you.</p>
-              ) : (
+              </div>
+            ) : canPayWithPayPal && paypalClientId ? (
+              <PayPalCheckout
+                token={token}
+                clientId={paypalClientId}
+                currency={currency}
+                amountLabel={formatMoney(invoice.currency, amountDue)}
+              />
+            ) : (
+              <div className="mt-6 rounded-lg bg-gray-50 p-4 text-center">
                 <p className="text-gray-600 text-sm">
-                  Online payment is not enabled yet. Please contact the sender to arrange payment.
+                  {isPayPalCurrency(currency)
+                    ? 'Online payment is not enabled yet. Please contact the sender to arrange payment.'
+                    : `Online card payment is not available for ${invoice.currency} invoices. Please contact the sender to arrange payment.`}
                 </p>
-              )}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

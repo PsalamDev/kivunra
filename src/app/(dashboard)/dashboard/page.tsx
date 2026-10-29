@@ -7,6 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDate, formatMoney } from '@/lib/format'
 import { sumByCurrency } from '@/lib/invoices'
+import {
+  remainingBalance,
+  sumCapturedByInvoice,
+  type PaymentCaptureJoinRow,
+} from '@/lib/payments'
 import { createClient } from '@/lib/supabase/server'
 
 interface DashboardInvoice {
@@ -20,11 +25,14 @@ interface DashboardInvoice {
   customers: { name: string } | null
 }
 
+interface LedgerIncomeRow {
+  amount: number | string | null
+  currency: string
+}
+
 const OUTSTANDING_STATUSES = ['Published', 'PartiallyPaid', 'Overdue']
 
-function Totals({ rows }: { rows: DashboardInvoice[] }) {
-  const totals = sumByCurrency(rows)
-
+function Totals({ totals }: { totals: Array<[string, number]> }) {
   if (totals.length === 0) {
     return <p className="text-2xl font-bold text-[#12243A]">—</p>
   }
@@ -50,13 +58,24 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  const { data, error } = await supabase
-    .from('invoices')
-    .select('id, invoice_number, status, total, currency, due_at, created_at, customers(name)')
-    .eq('owner_user_id', user.id)
-    .order('created_at', { ascending: false })
+  const [invoiceResult, captureResult, ledgerResult] = await Promise.all([
+    supabase
+      .from('invoices')
+      .select('id, invoice_number, status, total, currency, due_at, created_at, customers(name)')
+      .eq('owner_user_id', user.id)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('payment_captures')
+      .select('amount, status, payment_orders!inner(invoice_id)')
+      .eq('status', 'COMPLETED'),
+    supabase
+      .from('ledger_entries')
+      .select('amount, currency')
+      .eq('owner_user_id', user.id)
+      .eq('direction', 'Income'),
+  ])
 
-  if (error) {
+  if (invoiceResult.error || captureResult.error || ledgerResult.error) {
     return (
       <main className="container mx-auto px-4 py-8">
         <h2 className="text-2xl font-bold text-[#12243A] mb-6">Dashboard</h2>
@@ -69,9 +88,25 @@ export default async function DashboardPage() {
     )
   }
 
-  const invoices = (data ?? []) as unknown as DashboardInvoice[]
-  const paid = invoices.filter((invoice) => invoice.status === 'Paid')
-  const outstanding = invoices.filter((invoice) => OUTSTANDING_STATUSES.includes(invoice.status))
+  const invoices = (invoiceResult.data ?? []) as unknown as DashboardInvoice[]
+  const captures = (captureResult.data ?? []) as unknown as PaymentCaptureJoinRow[]
+  const ledger = (ledgerResult.data ?? []) as unknown as LedgerIncomeRow[]
+
+  const capturedByInvoice = sumCapturedByInvoice(captures)
+  const collectedTotals = sumByCurrency(
+    ledger.map((entry) => ({ total: entry.amount, currency: entry.currency }))
+  )
+
+  const outstandingInvoices = invoices.filter((invoice) =>
+    OUTSTANDING_STATUSES.includes(invoice.status)
+  )
+  const outstandingTotals = sumByCurrency(
+    outstandingInvoices.map((invoice) => ({
+      total: remainingBalance(invoice.total, capturedByInvoice.get(invoice.id)),
+      currency: invoice.currency,
+    }))
+  )
+
   const drafts = invoices.filter((invoice) => invoice.status === 'Draft')
   const recent = invoices.slice(0, 5)
 
@@ -90,9 +125,9 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm font-medium text-gray-500">Collected</CardTitle>
           </CardHeader>
           <CardContent>
-            <Totals rows={paid} />
+            <Totals totals={collectedTotals} />
             <p className="text-sm text-gray-500 mt-2">
-              {paid.length} paid {paid.length === 1 ? 'invoice' : 'invoices'}
+              {ledger.length} income {ledger.length === 1 ? 'entry' : 'entries'}
             </p>
           </CardContent>
         </Card>
@@ -102,9 +137,10 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm font-medium text-gray-500">Outstanding</CardTitle>
           </CardHeader>
           <CardContent>
-            <Totals rows={outstanding} />
+            <Totals totals={outstandingTotals} />
             <p className="text-sm text-gray-500 mt-2">
-              {outstanding.length} open {outstanding.length === 1 ? 'invoice' : 'invoices'}
+              {outstandingInvoices.length} open{' '}
+              {outstandingInvoices.length === 1 ? 'invoice' : 'invoices'}
             </p>
           </CardContent>
         </Card>
