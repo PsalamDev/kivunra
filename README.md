@@ -75,6 +75,19 @@ How a payment flows:
 Partial payments are supported. Captures are recorded once per PayPal capture
 id, so a repeated approval, webhook retry or duplicate callback is harmless.
 
+## AI invoice drafting
+
+Set `GROQ_API_KEY` to enable the AI assistant on **Invoices → Create Invoice**.
+The optional `GROQ_MODEL` overrides the default model
+(`llama-3.3-70b-versatile`).
+
+`POST /api/ai/invoice-draft` is authenticated and rate-limited to 20 drafts per
+user per hour. It sends the request plus the user's customer names to Groq,
+validates the JSON response with zod, matches the suggested customer to an
+existing one, and returns line items, currency and due date for the form. It
+never creates an invoice directly, and every attempt is recorded in
+`ai_interactions` for audit and rate limiting.
+
 ## Required environment variables
 
 See `.env.example`. In addition to the Supabase keys, set

@@ -2,13 +2,13 @@ import { z } from 'zod'
 
 import { INVOICE_STATUSES } from './invoices'
 
-const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN'] as const
-
 const dateLike = z
   .string()
   .trim()
   .min(1)
   .refine((value) => !Number.isNaN(Date.parse(value)), 'Invalid date')
+
+export const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN'] as const
 
 export const invoiceItemSchema = z.object({
   description: z.string().trim().min(1, 'Description is required').max(500),
