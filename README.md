@@ -65,9 +65,10 @@ Create a webhook in the PayPal dashboard pointing at:
 ${NEXT_PUBLIC_APP_URL}/api/webhooks/paypal
 ```
 
-Subscribe to `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED`,
-`PAYMENT.CAPTURE.REFUNDED.PENDING` and `PAYMENT.CAPTURE.REVERSED` (other event
-types are stored and acknowledged, but ignored). Copy the webhook id into
+Subscribe to `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED` and
+`PAYMENT.CAPTURE.REVERSED` (optionally `PAYMENT.CAPTURE.DENIED` and
+`PAYMENT.CAPTURE.PENDING`; other event types are stored and acknowledged, but
+ignored). Copy the webhook id into
 `PAYPAL_WEBHOOK_ID`. Webhook signatures are verified with PayPal before
 anything is applied, and every delivery is stored in `webhook_events` so
 retries are idempotent.

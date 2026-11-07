@@ -28,11 +28,7 @@ interface PayPalWebhookEvent {
 
 const PERMANENT_RPC_ERRORS = new Set(['22023', 'P0002'])
 
-const REFUND_EVENT_TYPES = new Set([
-  'PAYMENT.CAPTURE.REFUNDED',
-  'PAYMENT.CAPTURE.REFUNDED.PENDING',
-  'PAYMENT.CAPTURE.REVERSED',
-])
+const REFUND_EVENT_TYPES = new Set(['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.CAPTURE.REVERSED'])
 
 function captureIdFromResource(resource: PayPalWebhookEvent['resource']): string | null {
   const direct = resource?.supplementary_data?.related_ids?.capture_id
