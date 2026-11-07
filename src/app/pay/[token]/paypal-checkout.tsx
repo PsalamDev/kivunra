@@ -84,6 +84,7 @@ export function PayPalCheckout({
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [receiptReady, setReceiptReady] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -154,6 +155,7 @@ export function PayPalCheckout({
               }
 
               if (data?.status === 'COMPLETED') {
+                setReceiptReady(true)
                 setMessage(
                   data.invoice_status === 'Paid'
                     ? 'Payment received in full — thank you.'
@@ -217,6 +219,14 @@ export function PayPalCheckout({
       {message && (
         <p role="status" className="mt-3 text-center text-sm font-medium text-green-700">
           {message}
+        </p>
+      )}
+
+      {receiptReady && (
+        <p className="mt-2 text-center text-sm">
+          <a href={`/pay/${token}/receipt`} className="font-medium text-[#0EA58B] hover:underline">
+            View receipt
+          </a>
         </p>
       )}
 

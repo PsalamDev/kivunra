@@ -16,15 +16,36 @@ interface PayPalWebhookEvent {
       currency_code?: string
       value?: string
     }
+    links?: Array<{ href?: string; rel?: string }>
     supplementary_data?: {
       related_ids?: {
         order_id?: string
+        capture_id?: string
       }
     }
   }
 }
 
 const PERMANENT_RPC_ERRORS = new Set(['22023', 'P0002'])
+
+const REFUND_EVENT_TYPES = new Set([
+  'PAYMENT.CAPTURE.REFUNDED',
+  'PAYMENT.CAPTURE.REFUNDED.PENDING',
+  'PAYMENT.CAPTURE.REVERSED',
+])
+
+function captureIdFromResource(resource: PayPalWebhookEvent['resource']): string | null {
+  const direct = resource?.supplementary_data?.related_ids?.capture_id
+  if (direct) return direct
+
+  for (const link of resource?.links ?? []) {
+    const href = typeof link?.href === 'string' ? link.href : ''
+    const match = href.match(/\/payments\/captures\/([0-9A-Z]+)/)
+    if (match?.[1]) return match[1]
+  }
+
+  return null
+}
 
 /**
  * PayPal webhook receiver.
@@ -201,6 +222,68 @@ export async function POST(request: NextRequest) {
 
       // Permanent failures (overpayment, deleted invoice) would loop forever.
       if (!PERMANENT_RPC_ERRORS.has(recordError.code ?? '')) {
+        return apiError(500, 'Could not process webhook')
+      }
+    }
+  } else if (REFUND_EVENT_TYPES.has(event.event_type)) {
+    const resource = event.resource ?? {}
+    const refundId = resource.id
+    const captureId = captureIdFromResource(resource)
+    const currency = (resource.amount?.currency_code ?? '').toUpperCase()
+    const amount = Number(resource.amount?.value ?? Number.NaN)
+
+    if (!refundId || !captureId || !Number.isFinite(amount) || amount <= 0) {
+      console.error(
+        '[paypal webhook] malformed refund event',
+        event.id,
+        JSON.stringify({ refundId, captureId, currency, amount })
+      )
+      await markProcessed()
+      return NextResponse.json({ received: true })
+    }
+
+    // Only refunds against captures Kivunra recorded can be applied.
+    const { data: captureRow, error: captureError } = await admin
+      .from('payment_captures')
+      .select('id')
+      .eq('paypal_capture_id', captureId)
+      .maybeSingle()
+
+    if (captureError) {
+      console.error('[paypal webhook] capture lookup failed', captureError.message)
+      return apiError(500, 'Could not process webhook')
+    }
+
+    if (!captureRow) {
+      console.info('[paypal webhook] refund for unknown capture, ignoring', event.id, captureId)
+      await markProcessed()
+      return NextResponse.json({ received: true })
+    }
+
+    const refundStatus =
+      event.event_type === 'PAYMENT.CAPTURE.REVERSED'
+        ? 'COMPLETED'
+        : resource.status === 'PENDING'
+          ? 'PENDING'
+          : 'COMPLETED'
+
+    const { error: refundError } = await admin.rpc('apply_payment_refund', {
+      p_paypal_capture_id: captureId,
+      p_paypal_refund_id: refundId,
+      p_amount: amount,
+      p_currency: currency,
+      p_status: refundStatus,
+    })
+
+    if (refundError) {
+      console.error(
+        '[paypal webhook] record refund failed',
+        event.id,
+        refundError.code,
+        refundError.message
+      )
+
+      if (!PERMANENT_RPC_ERRORS.has(refundError.code ?? '')) {
         return apiError(500, 'Could not process webhook')
       }
     }

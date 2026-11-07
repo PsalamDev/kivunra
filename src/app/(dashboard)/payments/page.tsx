@@ -7,6 +7,13 @@ import { formatDate, formatMoney } from '@/lib/format'
 import { sumByCurrency } from '@/lib/invoices'
 import { createClient } from '@/lib/supabase/server'
 
+import { RefundAction } from './refund-action'
+
+interface CaptureRefund {
+  amount: number | string | null
+  status: string
+}
+
 interface CaptureInvoice {
   invoice_number: string
   customers: { name: string } | null
@@ -18,6 +25,7 @@ interface PaymentCapture {
   currency: string
   status: string
   captured_at: string
+  payment_refunds: CaptureRefund[] | null
   payment_orders:
     | {
         paypal_order_id: string | null
@@ -36,6 +44,18 @@ function normaliseOrder(row: PaymentCapture) {
   return { order: order ?? null, invoice: invoice ?? null }
 }
 
+function refundedOfCapture(row: PaymentCapture): number {
+  let total = 0
+
+  for (const refund of row.payment_refunds ?? []) {
+    if (refund.status !== 'COMPLETED') continue
+    const amount = Number(refund.amount ?? 0)
+    if (Number.isFinite(amount)) total += amount
+  }
+
+  return Math.round(total * 100) / 100
+}
+
 export default async function PaymentsPage() {
   const supabase = await createClient()
   const {
@@ -49,7 +69,7 @@ export default async function PaymentsPage() {
   const { data, error } = await supabase
     .from('payment_captures')
     .select(
-      'id, amount, currency, status, captured_at, payment_orders(paypal_order_id, invoices(invoice_number, customers(name)))'
+      'id, amount, currency, status, captured_at, payment_refunds(amount, status), payment_orders(paypal_order_id, invoices(invoice_number, customers(name)))'
     )
     .order('captured_at', { ascending: false })
     .limit(100)
@@ -57,6 +77,14 @@ export default async function PaymentsPage() {
   const captures = (data ?? []) as unknown as PaymentCapture[]
   const completed = captures.filter((capture) => capture.status === 'COMPLETED')
   const pending = captures.filter((capture) => capture.status === 'PENDING')
+
+  const refundTotals = sumByCurrency(
+    captures.flatMap((capture) =>
+      (capture.payment_refunds ?? [])
+        .filter((refund) => refund.status === 'COMPLETED')
+        .map((refund) => ({ total: refund.amount, currency: capture.currency }))
+    )
+  )
 
   const capturedTotals = sumByCurrency(
     completed.map((capture) => ({ total: capture.amount, currency: capture.currency }))
@@ -86,6 +114,26 @@ export default async function PaymentsPage() {
             <p className="text-sm text-gray-500 mt-2">
               {completed.length} completed {completed.length === 1 ? 'payment' : 'payments'}
             </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-gray-500">Refunded</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {refundTotals.length === 0 ? (
+              <p className="text-2xl font-bold text-[#12243A]">—</p>
+            ) : (
+              <div className="space-y-1">
+                {refundTotals.map(([currency, amount]) => (
+                  <p key={currency} className="text-2xl font-bold text-[#12243A]">
+                    {formatMoney(currency, amount)}
+                  </p>
+                ))}
+              </div>
+            )}
+            <p className="text-sm text-gray-500 mt-2">Refunds issued back to customers</p>
           </CardContent>
         </Card>
 
@@ -134,13 +182,17 @@ export default async function PaymentsPage() {
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Refunded</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Captured</TableHead>
+                  <TableHead className="text-right">Refund</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {captures.map((capture) => {
                   const { invoice } = normaliseOrder(capture)
+                  const refunded = refundedOfCapture(capture)
+                  const captureAmount = Number(capture.amount ?? 0)
 
                   return (
                     <TableRow key={capture.id}>
@@ -148,13 +200,28 @@ export default async function PaymentsPage() {
                         {invoice?.invoice_number ?? '—'}
                       </TableCell>
                       <TableCell>{invoice?.customers?.name ?? '—'}</TableCell>
+                      <TableCell>{formatMoney(capture.currency, captureAmount)}</TableCell>
                       <TableCell>
-                        {formatMoney(capture.currency, Number(capture.amount ?? 0))}
+                        {refunded > 0
+                          ? formatMoney(capture.currency, refunded)
+                          : '—'}
                       </TableCell>
                       <TableCell>
                         <PaymentStatusBadge status={capture.status} />
                       </TableCell>
                       <TableCell>{formatDate(capture.captured_at)}</TableCell>
+                      <TableCell className="text-right">
+                        {capture.status === 'COMPLETED' ? (
+                          <RefundAction
+                            captureId={capture.id}
+                            captureAmount={captureAmount}
+                            refundedAmount={refunded}
+                            currency={capture.currency}
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   )
                 })}

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { formatDate, formatMoney } from '@/lib/format'
 
 interface InvoiceItem {
   id: string
@@ -13,6 +14,31 @@ interface InvoiceItem {
   quantity: number
   unit_price: number
   line_total: number
+}
+
+interface PaymentRefund {
+  amount: number | string | null
+  currency: string
+  status: string
+  refunded_at: string | null
+}
+
+interface PaymentCapture {
+  id: string
+  amount: number | string | null
+  currency: string
+  status: string
+  captured_at: string
+  payment_refunds: PaymentRefund[] | null
+}
+
+interface PaymentOrder {
+  paypal_order_id: string | null
+  status: string
+  expected_amount: number | string | null
+  currency: string
+  created_at: string
+  payment_captures: PaymentCapture[] | null
 }
 
 interface Invoice {
@@ -26,6 +52,41 @@ interface Invoice {
   public_url: string | null
   customers?: { name: string; email: string } | null
   invoice_items: InvoiceItem[]
+  payment_orders?: PaymentOrder[] | null
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/** Captured, refunded and still-owed totals for an invoice. */
+function paymentTotals(invoice: Invoice) {
+  let captured = 0
+  let refunded = 0
+
+  for (const order of invoice.payment_orders ?? []) {
+    for (const capture of order.payment_captures ?? []) {
+      const amount = Number(capture.amount ?? 0)
+      if (capture.status === 'COMPLETED' && Number.isFinite(amount)) {
+        captured += amount
+      }
+
+      for (const refund of capture.payment_refunds ?? []) {
+        const refundAmount = Number(refund.amount ?? 0)
+        if (refund.status === 'COMPLETED' && Number.isFinite(refundAmount)) {
+          refunded += refundAmount
+        }
+      }
+    }
+  }
+
+  captured = roundMoney(captured)
+  refunded = roundMoney(refunded)
+  const net = roundMoney(captured - refunded)
+  const total = Number(invoice.total ?? 0)
+  const due = invoice.status === 'Paid' ? 0 : roundMoney(Math.max(0, total - net))
+
+  return { captured, refunded, net, due }
 }
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -109,6 +170,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     )
   }
 
+  const totals = paymentTotals(invoice)
+  const captures = (invoice.payment_orders ?? []).flatMap(
+    (order) => order.payment_captures ?? []
+  )
+
   return (
     <main className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
@@ -165,6 +231,81 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Payment Summary</CardTitle>
+            {invoice.public_url && captures.length > 0 && (
+              <a
+                href={`${invoice.public_url}/receipt`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-[#0EA58B] hover:underline"
+              >
+                View receipt
+              </a>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div>
+              <p className="text-sm text-gray-500">Captured</p>
+              <p className="text-lg font-semibold text-[#12243A]">
+                {formatMoney(invoice.currency, totals.captured)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Refunded</p>
+              <p className="text-lg font-semibold text-[#12243A]">
+                {formatMoney(invoice.currency, totals.refunded)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Amount due</p>
+              <p className="text-lg font-semibold text-[#12243A]">
+                {formatMoney(invoice.currency, totals.due)}
+              </p>
+            </div>
+          </div>
+
+          {captures.length === 0 ? (
+            <p className="text-gray-500">No payments captured yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Captured</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Refunded</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {captures.map((capture) => {
+                  const refunded = (capture.payment_refunds ?? [])
+                    .filter((refund) => refund.status === 'COMPLETED')
+                    .reduce((sum, refund) => sum + Number(refund.amount ?? 0), 0)
+
+                  return (
+                    <TableRow key={capture.id}>
+                      <TableCell>{formatDate(capture.captured_at)}</TableCell>
+                      <TableCell className="text-right">
+                        {formatMoney(capture.currency, Number(capture.amount ?? 0))}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {refunded > 0 ? formatMoney(capture.currency, roundMoney(refunded)) : '—'}
+                      </TableCell>
+                      <TableCell>{capture.status}</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

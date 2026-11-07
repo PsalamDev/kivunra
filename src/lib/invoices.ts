@@ -16,6 +16,13 @@ export const PAYABLE_STATUSES: readonly InvoiceStatus[] = ['Published', 'Partial
 
 export const INVOICE_SELECT = '*, customers(*), invoice_items(*)'
 
+/**
+ * Detail view also loads the payment trail so the owner can see captured,
+ * refunded and outstanding amounts without a second round trip.
+ */
+export const INVOICE_DETAIL_SELECT =
+  '*, customers(*), invoice_items(*), payment_orders(paypal_order_id, status, expected_amount, currency, created_at, payment_captures(id, amount, currency, status, captured_at, payment_refunds(amount, currency, status, refunded_at)))'
+
 export function isInvoiceStatus(value: unknown): value is InvoiceStatus {
   return typeof value === 'string' && (INVOICE_STATUSES as readonly string[]).includes(value)
 }

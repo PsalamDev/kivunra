@@ -47,10 +47,35 @@ export interface PaymentOrder {
   created_at: string;
 }
 
+export interface PaymentRefund {
+  id: string;
+  payment_capture_id: string;
+  paypal_refund_id: string;
+  amount: number;
+  currency: string;
+  status: 'COMPLETED' | 'PENDING' | 'CANCELLED' | 'FAILED';
+  reason?: string;
+  refunded_at: string;
+}
+
+export type NotificationType = 'PaymentReceived' | 'RefundProcessed';
+
+export interface Notification {
+  id: string;
+  owner_user_id: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  source_type?: string;
+  source_id?: string;
+  read_at?: string;
+  created_at: string;
+}
+
 export interface LedgerEntry {
   id: string;
   owner_user_id: string;
-  source_type: 'Invoice' | 'Expense' | 'Manual';
+  source_type: 'Invoice' | 'Expense' | 'Manual' | 'Payment' | 'Refund';
   source_id: string;
   direction: 'Income' | 'Expense';
   amount: number;

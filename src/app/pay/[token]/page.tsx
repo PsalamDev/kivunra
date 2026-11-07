@@ -10,6 +10,7 @@ import {
   completedCapturedAmount,
   invoiceAmountDue,
   loadPublicInvoice,
+  refundedAmount,
 } from '@/lib/public-invoice'
 import { isInvoiceTokenShape } from '@/lib/public-token'
 
@@ -73,7 +74,10 @@ export default async function PublicInvoicePage({
 
   const items = invoice.invoice_items ?? []
   const total = Number(invoice.total ?? 0)
-  const paidToDate = completedCapturedAmount(invoice)
+  const paidToDate = Math.max(
+    0,
+    Math.round((completedCapturedAmount(invoice) - refundedAmount(invoice)) * 100) / 100
+  )
   const amountDue = invoiceAmountDue(invoice)
   const isPaid = invoice.status === 'Paid' || amountDue <= 0.01
   const currency = invoice.currency.toUpperCase()
@@ -182,6 +186,17 @@ export default async function PublicInvoicePage({
                     : `Online card payment is not available for ${invoice.currency} invoices. Please contact the sender to arrange payment.`}
                 </p>
               </div>
+            )}
+
+            {paidToDate > 0 && (
+              <p className="mt-4 text-center text-sm">
+                <a
+                  href={`/pay/${token}/receipt`}
+                  className="font-medium text-[#0EA58B] hover:underline"
+                >
+                  View receipt
+                </a>
+              </p>
             )}
           </CardContent>
         </Card>

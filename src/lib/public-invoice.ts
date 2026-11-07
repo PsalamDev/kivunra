@@ -2,11 +2,20 @@ import { hashInvoiceToken } from './public-token'
 import { createAdminClient, isServiceRoleConfigured } from './supabase/admin'
 
 export const PUBLIC_INVOICE_SELECT =
-  'id, invoice_number, total, currency, status, due_at, created_at, customers(name), invoice_items(description, quantity, unit_price, line_total), payment_orders(paypal_order_id, status, expected_amount, currency, created_at, payment_captures(amount, status))'
+  'id, invoice_number, total, currency, status, due_at, created_at, customers(name), invoice_items(description, quantity, unit_price, line_total), payment_orders(paypal_order_id, status, expected_amount, currency, created_at, payment_captures(id, amount, status, captured_at, payment_refunds(amount, status, refunded_at)))'
 
-export interface PublicInvoiceCapture {
+export interface PublicInvoiceRefund {
   amount: number | string | null
   status: string
+  refunded_at?: string
+}
+
+export interface PublicInvoiceCapture {
+  id?: string
+  amount: number | string | null
+  status: string
+  captured_at?: string
+  payment_refunds: PublicInvoiceRefund[] | null
 }
 
 export interface PublicInvoiceOrder {
@@ -59,14 +68,36 @@ export function completedCapturedAmount(invoice: PublicInvoice): number {
   return roundMoney(total)
 }
 
-/** Amount the customer still owes, never below zero. */
+/** Sum of completed refunds against this invoice's captures. */
+export function refundedAmount(invoice: PublicInvoice): number {
+  let total = 0
+
+  for (const order of invoice.payment_orders ?? []) {
+    for (const capture of order.payment_captures ?? []) {
+      for (const refund of capture.payment_refunds ?? []) {
+        if (refund.status !== 'COMPLETED') continue
+        const amount = Number(refund.amount ?? 0)
+        if (Number.isFinite(amount)) total += amount
+      }
+    }
+  }
+
+  return roundMoney(total)
+}
+
+export function roundMoneyValue(value: number): number {
+  return roundMoney(value)
+}
+
+/** Amount the customer still owes (captures minus refunds), never below zero. */
 export function invoiceAmountDue(invoice: PublicInvoice): number {
   if (invoice.status === 'Paid') return 0
 
   const total = Number(invoice.total ?? 0)
   if (!Number.isFinite(total) || total <= 0) return 0
 
-  return roundMoney(Math.max(0, total - completedCapturedAmount(invoice)))
+  const net = roundMoney(completedCapturedAmount(invoice) - refundedAmount(invoice))
+  return roundMoney(Math.max(0, total - net))
 }
 
 export async function loadPublicInvoice(token: string): Promise<PublicInvoiceResult> {

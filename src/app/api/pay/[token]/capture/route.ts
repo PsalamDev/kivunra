@@ -4,9 +4,12 @@ import { apiError, databaseErrorResponse } from '@/lib/api-error'
 import { PAYABLE_STATUSES, type InvoiceStatus } from '@/lib/invoices'
 import {
   capturePayPalOrder,
+  fetchPayPalOrder,
   isPayPalConfigured,
   isPayPalCurrency,
   PayPalApiError,
+  type PayPalCapture,
+  type PayPalOrder,
 } from '@/lib/paypal'
 import {
   completedCapturedAmount,
@@ -19,6 +22,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 
 type RouteContext = { params: Promise<{ token: string }> }
+
+/** RPC codes that will keep failing: do not ask the client to retry forever. */
+const PERMANENT_RPC_ERRORS = new Set(['22023', 'P0002'])
+
+function extractCompletedCapture(order: PayPalOrder): PayPalCapture | undefined {
+  return order.purchase_units
+    ?.flatMap((unit) => unit.payments?.captures ?? [])
+    .find((capture) => capture.status === 'COMPLETED')
+}
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100
@@ -120,27 +132,48 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return apiError(409, 'The amount due has changed. Please refresh the page and try again.')
   }
 
-  let capturedOrder
+  let capturedOrder: PayPalOrder | null = null
+  let reconciled = false
 
   try {
     capturedOrder = await capturePayPalOrder(orderID)
   } catch (error) {
-    if (error instanceof PayPalApiError) {
-      console.error(
-        '[paypal] capture failed',
-        error.status,
-        error.message,
-        error.debugId ?? ''
-      )
+    if (error instanceof PayPalApiError && (error.status === 400 || error.status === 403 || error.status === 422)) {
+      // A first attempt may have captured the money even though this call
+      // failed (double-click, retry, webhook race). Read the order back and
+      // reconcile instead of telling the payer something went wrong.
+      try {
+        const orderNow = await fetchPayPalOrder(orderID)
+        const existingCapture = extractCompletedCapture(orderNow)
 
-      if (error.status === 422) {
-        return apiError(409, 'PayPal could not complete this payment. Please try again.')
+        if (existingCapture) {
+          capturedOrder = orderNow
+          reconciled = true
+          console.warn('[paypal] capture reconciled after error', orderID, error.status, error.message)
+        }
+      } catch (readError) {
+        console.error('[paypal] could not re-read order during reconciliation', orderID, readError)
       }
-    } else {
-      console.error('[paypal] capture failed', error)
     }
 
-    return apiError(502, 'Could not complete the PayPal payment. Please try again.')
+    if (!capturedOrder) {
+      if (error instanceof PayPalApiError) {
+        console.error(
+          '[paypal] capture failed',
+          error.status,
+          error.message,
+          error.debugId ?? ''
+        )
+
+        if (error.status === 422) {
+          return apiError(409, 'PayPal could not complete this payment. Please try again.')
+        }
+      } else {
+        console.error('[paypal] capture failed', error)
+      }
+
+      return apiError(502, 'Could not complete the PayPal payment. Please try again.')
+    }
   }
 
   const captures =
@@ -189,7 +222,26 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   if (recordError) {
     console.error('[paypal] record capture failed', recordError.code, recordError.message)
-    return databaseErrorResponse(recordError)
+
+    // A permanent refusal would loop on every retry; surface it now.
+    if (PERMANENT_RPC_ERRORS.has(recordError.code ?? '')) {
+      return databaseErrorResponse(recordError)
+    }
+
+    // The money has moved but our record did not land. The webhook (or a
+    // retry) will reconcile, so acknowledge instead of reporting a failure.
+    return NextResponse.json(
+      {
+        status,
+        reconciled: reconciled || undefined,
+        pending_reconciliation: true,
+        message: 'Payment received. Final confirmation is syncing in the background.',
+        invoice_status: invoice.status,
+        captured: capturedSoFar,
+        amount_due: amountDue,
+      },
+      { status: 202 }
+    )
   }
 
   const result = (data ?? {}) as {

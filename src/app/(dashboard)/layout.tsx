@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
 import { signout } from '@/app/(auth)/login/actions'
+import { NotificationBell } from '@/components/notification-bell'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/server'
 
 // Every dashboard page is per-user; never prerender or cache them.
@@ -61,6 +62,7 @@ export default async function DashboardLayout({
             <Link href="/customers" className="hover:text-[#0EA58B]">Customers</Link>
             <Link href="/payments" className="hover:text-[#0EA58B]">Payments</Link>
             <Link href="/insights" className="hover:text-[#0EA58B]">Insights</Link>
+            <NotificationBell />
             <span className="text-sm text-gray-300">{user.email}</span>
             <form action={signout}>
               <button type="submit" className="hover:text-[#0EA58B] text-sm">Sign out</button>

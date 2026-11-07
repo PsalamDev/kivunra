@@ -212,6 +212,49 @@ export async function capturePayPalOrder(orderId: string): Promise<PayPalOrder> 
   })
 }
 
+/**
+ * Reads an order directly. Used to reconcile when a capture response was lost
+ * (network error) or PayPal reports the order already captured.
+ */
+export async function fetchPayPalOrder(orderId: string): Promise<PayPalOrder> {
+  return paypalFetch<PayPalOrder>(`/v2/checkout/orders/${encodeURIComponent(orderId)}`)
+}
+
+export interface PayPalRefund {
+  id: string
+  status: string
+  amount?: {
+    currency_code?: string
+    value?: string
+  }
+}
+
+export async function refundPayPalCapture(input: {
+  captureId: string
+  amount?: number
+  currency?: string
+}): Promise<PayPalRefund> {
+  const body: Record<string, unknown> = {}
+
+  if (typeof input.amount === 'number' && input.currency) {
+    body.amount = {
+      currency_code: input.currency.toUpperCase(),
+      value: formatAmount(input.amount),
+    }
+  }
+
+  return paypalFetch<PayPalRefund>(
+    `/v2/payments/captures/${encodeURIComponent(input.captureId)}/refund`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: {
+        Prefer: 'return=representation',
+      },
+    }
+  )
+}
+
 const ALLOWED_CERT_HOSTS = new Set(['api.paypal.com', 'api.sandbox.paypal.com'])
 
 export async function verifyPayPalWebhookSignature(

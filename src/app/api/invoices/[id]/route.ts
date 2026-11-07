@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { apiError, databaseErrorResponse } from '@/lib/api-error'
-import { INVOICE_SELECT, serializeInvoice } from '@/lib/invoices'
+import { INVOICE_DETAIL_SELECT, serializeInvoice } from '@/lib/invoices'
 import { createInvoiceToken, hashInvoiceToken, isInvoiceTokenConfigured } from '@/lib/public-token'
 import { createClient } from '@/lib/supabase/server'
 import { updateInvoiceSchema } from '@/lib/validation'
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
   const { data, error } = await supabase
     .from('invoices')
-    .select(INVOICE_SELECT)
+    .select(INVOICE_DETAIL_SELECT)
     .eq('id', id)
     .eq('owner_user_id', user.id)
     .maybeSingle()
@@ -134,7 +134,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   const { data: invoice, error: fetchError } = await supabase
     .from('invoices')
-    .select(INVOICE_SELECT)
+    .select(INVOICE_DETAIL_SELECT)
     .eq('id', id)
     .eq('owner_user_id', user.id)
     .single()

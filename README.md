@@ -39,11 +39,14 @@ Apply the migrations in order (Supabase SQL editor or CLI):
 1. `supabase/migrations/001_initial_schema.sql`
 2. `supabase/migrations/002_invoice_hardening.sql`
 3. `supabase/migrations/003_payments.sql`
+4. `supabase/migrations/004_refunds_notifications.sql`
 
 Migration 002 adds atomic invoice RPCs, race-free invoice numbering, the
 hashed public pay-link index and the missing RLS policies. Migration 003 adds
 the ledger `Payment` source type and the atomic `record_payment_capture` RPC
-used by PayPal captures and webhooks.
+used by PayPal captures and webhooks. Migration 004 adds refunds
+(`payment_refunds`), in-app notifications, the ledger `Refund` source type, and
+the atomic `apply_payment_refund` RPC.
 
 ## PayPal setup
 
@@ -58,10 +61,12 @@ Create a webhook in the PayPal dashboard pointing at:
 ${NEXT_PUBLIC_APP_URL}/api/webhooks/paypal
 ```
 
-Subscribe to `PAYMENT.CAPTURE.COMPLETED` (other event types are stored and
-acknowledged, but ignored). Copy the webhook id into `PAYPAL_WEBHOOK_ID`.
-Webhook signatures are verified with PayPal before anything is applied, and
-every delivery is stored in `webhook_events` so retries are idempotent.
+Subscribe to `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED`,
+`PAYMENT.CAPTURE.REFUNDED.PENDING` and `PAYMENT.CAPTURE.REVERSED` (other event
+types are stored and acknowledged, but ignored). Copy the webhook id into
+`PAYPAL_WEBHOOK_ID`. Webhook signatures are verified with PayPal before
+anything is applied, and every delivery is stored in `webhook_events` so
+retries are idempotent.
 
 How a payment flows:
 
@@ -74,6 +79,36 @@ How a payment flows:
 
 Partial payments are supported. Captures are recorded once per PayPal capture
 id, so a repeated approval, webhook retry or duplicate callback is harmless.
+
+If PayPal reports an order already captured (double click, retried capture,
+webhook race), the capture route re-reads the order and reconciles instead of
+failing the payer. If the database write fails after the money has moved, the
+route returns `202 pending_reconciliation` and the webhook finishes the record.
+
+## Refunds, receipts and notifications
+
+Owners can refund a captured payment (fully or partially) from **Payments**.
+`POST /api/refunds` asks PayPal for the refund first, then calls the atomic
+`apply_payment_refund` RPC. Refund ids are unique at PayPal, so retries and
+duplicate webhook deliveries never refund or record twice. Migration 004 also
+handles `PAYMENT.CAPTURE.REFUNDED` webhooks, so refunds issued from the PayPal
+dashboard are recorded automatically.
+
+Refunds never rewrite the original capture. Balances are computed net of
+completed refunds: a fully refunded invoice returns to `Published` (payable
+again), while partial refunds keep `PartiallyPaid`/`Overdue`. Refund ledger
+entries use `source_type = 'Refund'` with `direction = 'Expense'`.
+
+Each completed payment or refund also creates an in-app notification for the
+owner. The dashboard bell (`GET/POST /api/notifications`) shows the latest 20
+with an unread count and can mark one or all as read. Notifications are created
+inside the money RPCs and deduped with the ledger write, so replays never
+duplicate them.
+
+Customers can open a read-only receipt at `/pay/[token]/receipt` — the same
+hashed token as the pay link — showing completed payments, refunds, net paid
+and the remaining balance. Receipt links appear on the public invoice page and
+after a successful checkout.
 
 ## AI invoice drafting
 
