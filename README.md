@@ -40,13 +40,17 @@ Apply the migrations in order (Supabase SQL editor or CLI):
 2. `supabase/migrations/002_invoice_hardening.sql`
 3. `supabase/migrations/003_payments.sql`
 4. `supabase/migrations/004_refunds_notifications.sql`
+5. `supabase/migrations/005_function_grants.sql`
 
 Migration 002 adds atomic invoice RPCs, race-free invoice numbering, the
 hashed public pay-link index and the missing RLS policies. Migration 003 adds
 the ledger `Payment` source type and the atomic `record_payment_capture` RPC
 used by PayPal captures and webhooks. Migration 004 adds refunds
 (`payment_refunds`), in-app notifications, the ledger `Refund` source type, and
-the atomic `apply_payment_refund` RPC.
+the atomic `apply_payment_refund` RPC. Migration 005 removes Supabase's
+default `EXECUTE` grants from `anon`/`authenticated` on the money RPCs and
+future functions — without it, PostgREST would let anonymous callers invoke
+`record_payment_capture` and `apply_payment_refund` directly.
 
 ## PayPal setup
 
