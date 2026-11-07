@@ -26,6 +26,49 @@ declare global {
 
 const sdkPromises = new Map<string, Promise<PayPalSdk>>()
 
+/** Gateway/network failures worth retrying; the server-side calls are idempotent. */
+const RETRYABLE_STATUSES = new Set([502, 503, 504])
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function postForJson<T>(
+  url: string,
+  body: unknown,
+  attempts = 3
+): Promise<{ ok: boolean; status: number; data: T | null }> {
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      const data = (await response.json().catch(() => null)) as T | null
+
+      if (RETRYABLE_STATUSES.has(response.status) && attempt < attempts) {
+        await sleep(600 * attempt)
+        continue
+      }
+
+      return { ok: response.ok, status: response.status, data }
+    } catch (error) {
+      lastError = error
+
+      if (attempt === attempts) {
+        break
+      }
+
+      await sleep(600 * attempt)
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Network request failed')
+}
+
 function loadPayPalSdk(clientId: string, currency: string): Promise<PayPalSdk> {
   if (window.paypal) {
     return Promise.resolve(window.paypal)
@@ -112,17 +155,17 @@ export function PayPalCheckout({
             setError(null)
 
             try {
-              const response = await fetch(`/api/pay/${token}/order`, { method: 'POST' })
-              const data = (await response.json().catch(() => null)) as
-                | { id?: string; error?: string }
-                | null
+              const result = await postForJson<{ id?: string; error?: string }>(
+                `/api/pay/${token}/order`,
+                undefined
+              )
 
-              if (!response.ok || !data?.id) {
+              if (!result.ok || !result.data?.id) {
                 setBusy(false)
-                throw new Error(data?.error || 'Could not start checkout')
+                throw new Error(result.data?.error || 'Could not start checkout')
               }
 
-              return data.id
+              return result.data.id
             } catch (createError) {
               setBusy(false)
               setError(
@@ -140,19 +183,18 @@ export function PayPalCheckout({
             setError(null)
 
             try {
-              const response = await fetch(`/api/pay/${token}/capture`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orderID }),
-              })
-              const data = (await response.json().catch(() => null)) as
-                | { status?: string; invoice_status?: string; error?: string }
-                | null
+              const result = await postForJson<{
+                status?: string
+                invoice_status?: string
+                error?: string
+              }>(`/api/pay/${token}/capture`, { orderID })
 
-              if (!response.ok) {
-                setError(data?.error || 'Payment could not be completed. Please try again.')
+              if (!result.ok) {
+                setError(result.data?.error || 'Payment could not be completed. Please try again.')
                 return
               }
+
+              const data = result.data
 
               if (data?.status === 'COMPLETED') {
                 setReceiptReady(true)

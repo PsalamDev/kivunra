@@ -25,6 +25,60 @@ function apiBase(): string {
   return process.env.PAYPAL_ENVIRONMENT === 'live' ? LIVE_API_BASE : SANDBOX_API_BASE
 }
 
+/**
+ * Errors that prove the request never reached PayPal (DNS or connect failure),
+ * so retrying cannot double-submit a capture or a refund.
+ */
+const CONNECT_ERROR_CODES = new Set([
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'UND_ERR_CONNECT_TIMEOUT',
+])
+
+function isConnectError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const cause = (error as { cause?: unknown }).cause
+  const code =
+    cause && typeof cause === 'object' && 'code' in cause
+      ? String((cause as { code?: unknown }).code)
+      : ''
+
+  return CONNECT_ERROR_CODES.has(code)
+}
+
+/**
+ * PayPal occasionally fails to resolve from this host (ENOTFOUND). Retrying
+ * only connection-level failures is safe for money-moving POSTs; ambiguous
+ * failures are left to the caller's reconciliation.
+ */
+async function paypalFetchWithRetry(
+  url: string,
+  init: RequestInit,
+  attempts = 4
+): Promise<Response> {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetch(url, init)
+    } catch (error) {
+      lastError = error
+
+      if (attempt === attempts || !isConnectError(error)) {
+        throw error
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 350 * attempt))
+    }
+  }
+
+  throw lastError
+}
+
 export class PayPalApiError extends Error {
   status: number
   debugId?: string
@@ -58,7 +112,7 @@ async function getAccessToken(forceRefresh = false): Promise<string> {
     throw new Error('PayPal is not configured')
   }
 
-  const response = await fetch(`${apiBase()}/v1/oauth2/token`, {
+  const response = await paypalFetchWithRetry(`${apiBase()}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
@@ -98,7 +152,7 @@ async function paypalFetch<T>(
   headers.set('Content-Type', 'application/json')
   headers.set('Accept', 'application/json')
 
-  const response = await fetch(`${apiBase()}${path}`, {
+  const response = await paypalFetchWithRetry(`${apiBase()}${path}`, {
     ...init,
     headers,
     cache: 'no-store',
