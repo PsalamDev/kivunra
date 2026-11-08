@@ -149,6 +149,32 @@ invalidates every existing pay link. Set `RESEND_API_KEY` and
 `INVOICE_EMAIL_FROM` to enable emailing invoices; without them the button
 returns a clear "not configured" error.
 
+## Deploying
+
+Deploy to Vercel (or any Node host), then set every variable from
+`.env.example` in the project's environment settings. Never commit `.env.local`.
+
+1. Apply migrations `001`–`005` to the production Supabase project.
+2. Set `NEXT_PUBLIC_APP_URL` to the deployed origin (for example
+   `https://kivunra.vercel.app`). Public pay links and invoice emails use it.
+3. Use `PAYPAL_ENVIRONMENT=live` with a live app's client id/secret for real
+   payments, or keep `sandbox` for a demo.
+4. Create the PayPal webhook against
+   `${NEXT_PUBLIC_APP_URL}/api/webhooks/paypal` and store its id in
+   `PAYPAL_WEBHOOK_ID`.
+
+If a webhook already exists, update its URL instead of creating a second one:
+
+```bash
+curl -X PATCH "https://api-m.sandbox.paypal.com/v1/notifications/webhooks/$PAYPAL_WEBHOOK_ID" \
+  -H "Authorization: Bearer $PAYPAL_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '[{"op":"replace","path":"/url","value":"https://your-app.vercel.app/api/webhooks/paypal"}]'
+```
+
+Quick tunnels from `cloudflared` get a new hostname each time they restart, so
+they are for local testing only — repoint the webhook after every restart.
+
 ## Checks
 
 ```bash
