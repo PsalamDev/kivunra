@@ -138,6 +138,17 @@ Invoices must be published first, and invoices already paid in full are not
 re-sent. If the provider rejects the message the API returns the provider's
 reason.
 
+### Verifying delivery
+
+A `2xx` response only means the provider accepted the message, not that it was
+delivered. Brevo in particular answers `201` even when the sender is not
+verified; the real outcome appears in its transactional log
+(`GET /v3/smtp/statistics/events` or **Transactional → Logs**). A transactional
+key with only "Send transactional email" cannot list senders, so confirm the
+sender status in **Senders** and check the event stream for `delivered`.
+Recipient-side spam filtering is outside the provider's control — sending from a
+verified domain instead of a free mailbox improves placement.
+
 ## AI invoice drafting
 
 Set `GROQ_API_KEY` to enable the AI assistant on **Invoices → Create Invoice**.
