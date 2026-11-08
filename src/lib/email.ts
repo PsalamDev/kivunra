@@ -8,7 +8,13 @@ import { formatDate, formatMoney } from './format'
  * `onboarding@resend.dev` can only deliver to the account owner's address.
  */
 
-const RESEND_ENDPOINT = 'https://api.resend.com/emails'
+const DEFAULT_RESEND_ENDPOINT = 'https://api.resend.com'
+
+/** Optional override so tests can point at a local mock server. */
+function resendEndpoint(): string {
+  const base = process.env.RESEND_API_URL?.trim() || DEFAULT_RESEND_ENDPOINT
+  return `${base.replace(/\/$/, '')}/emails`
+}
 
 /** Connection-level failures prove the request never reached Resend. */
 const CONNECT_ERROR_CODES = new Set([
@@ -56,7 +62,7 @@ async function postResend(body: unknown, attempts = 3): Promise<{ id?: string }>
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(RESEND_ENDPOINT, {
+      const response = await fetch(resendEndpoint(), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
