@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface PayPalButtonsInstance {
@@ -114,20 +114,73 @@ export function PayPalCheckout({
   clientId,
   currency,
   amountLabel,
+  returnedOrderId,
 }: {
   token: string
   clientId: string
   currency: string
   amountLabel: string
+  /** PayPal order id from `?token=` when PayPal redirected the payer back. */
+  returnedOrderId?: string | null
 }) {
   const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
   const orderInFlight = useRef(false)
+  const returnHandled = useRef(false)
   const [busy, setBusy] = useState(false)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [receiptReady, setReceiptReady] = useState(false)
+
+  const captureOrder = useCallback(
+    async (orderID: string) => {
+      if (orderInFlight.current) return
+      orderInFlight.current = true
+      setBusy(true)
+      setError(null)
+
+      try {
+        const result = await postForJson<{
+          status?: string
+          invoice_status?: string
+          error?: string
+        }>(`/api/pay/${token}/capture`, { orderID })
+
+        if (!result.ok) {
+          setError(result.data?.error || 'Payment could not be completed. Please try again.')
+          return
+        }
+
+        const data = result.data
+
+        if (data?.status === 'COMPLETED') {
+          setReceiptReady(true)
+          setMessage(
+            data.invoice_status === 'Paid'
+              ? 'Payment received in full — thank you.'
+              : 'Partial payment received — thank you.'
+          )
+          router.replace(`/pay/${token}/receipt`)
+        } else {
+          setMessage('Your payment is pending confirmation. This page will update once it clears.')
+          router.refresh()
+        }
+      } finally {
+        orderInFlight.current = false
+        setBusy(false)
+      }
+    },
+    [router, token]
+  )
+
+  // When PayPal redirects back after approval the order is only APPROVED, so
+  // the money must still be captured. Do it once on mount, then show the receipt.
+  useEffect(() => {
+    if (!returnedOrderId || returnHandled.current) return
+    returnHandled.current = true
+    void captureOrder(returnedOrderId)
+  }, [captureOrder, returnedOrderId])
 
   useEffect(() => {
     let cancelled = false
@@ -177,41 +230,7 @@ export function PayPalCheckout({
             }
           },
           onApprove: async ({ orderID }) => {
-            if (orderInFlight.current) return
-            orderInFlight.current = true
-            setBusy(true)
-            setError(null)
-
-            try {
-              const result = await postForJson<{
-                status?: string
-                invoice_status?: string
-                error?: string
-              }>(`/api/pay/${token}/capture`, { orderID })
-
-              if (!result.ok) {
-                setError(result.data?.error || 'Payment could not be completed. Please try again.')
-                return
-              }
-
-              const data = result.data
-
-              if (data?.status === 'COMPLETED') {
-                setReceiptReady(true)
-                setMessage(
-                  data.invoice_status === 'Paid'
-                    ? 'Payment received in full — thank you.'
-                    : 'Partial payment received — thank you.'
-                )
-              } else {
-                setMessage('Your payment is pending confirmation. This page will update once it clears.')
-              }
-
-              router.refresh()
-            } finally {
-              orderInFlight.current = false
-              setBusy(false)
-            }
+            await captureOrder(orderID)
           },
           onCancel: () => {
             setBusy(false)
@@ -240,7 +259,7 @@ export function PayPalCheckout({
       cancelled = true
       buttons?.close()
     }
-  }, [clientId, currency, token, router])
+  }, [captureOrder, clientId, currency, token])
 
   return (
     <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">

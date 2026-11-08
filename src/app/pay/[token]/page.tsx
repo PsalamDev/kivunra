@@ -38,10 +38,17 @@ function Unavailable({ message }: { message: string }) {
 
 export default async function PublicInvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { token } = await params
+  const query = await searchParams
+
+  // PayPal appends ?token=<orderId>&PayerID=... when it redirects the payer
+  // back after approval. That order still has to be captured server-side.
+  const returnedOrderId = typeof query.token === 'string' && query.token ? query.token : null
 
   // Reject anything that cannot be one of our tokens before touching the DB.
   if (!isInvoiceTokenShape(token)) {
@@ -177,6 +184,7 @@ export default async function PublicInvoicePage({
                 clientId={paypalClientId}
                 currency={currency}
                 amountLabel={formatMoney(invoice.currency, amountDue)}
+                returnedOrderId={returnedOrderId}
               />
             ) : (
               <div className="mt-6 rounded-lg bg-gray-50 p-4 text-center">

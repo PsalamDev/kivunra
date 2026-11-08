@@ -24,7 +24,7 @@ type RouteContext = { params: Promise<{ token: string }> }
  * Creates (or reuses) a PayPal order for the amount still owed.
  * The amount always comes from the database, never from the browser.
  */
-export async function POST(_request: NextRequest, { params }: RouteContext) {
+export async function POST(request: NextRequest, { params }: RouteContext) {
   const { token } = await params
 
   if (!isInvoiceTokenShape(token)) {
@@ -73,12 +73,19 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
 
   let order
 
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin
+
   try {
     order = await createPayPalOrder({
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoice_number,
       amount,
       currency,
+      // PayPal returns the payer here (with ?token=<orderId>) when it uses a
+      // full-page redirect instead of the in-context popup. The page captures
+      // the returned order and forwards the payer to the receipt.
+      returnUrl: `${origin}/pay/${token}`,
+      cancelUrl: `${origin}/pay/${token}`,
     })
   } catch (error) {
     if (error instanceof PayPalApiError) {

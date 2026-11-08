@@ -226,6 +226,9 @@ export async function createPayPalOrder(input: {
   invoiceNumber: string
   amount: number
   currency: string
+  /** Where PayPal sends the payer after approval (full-page/redirect flows). */
+  returnUrl?: string | null
+  cancelUrl?: string | null
 }): Promise<PayPalOrder> {
   const currency = input.currency.toUpperCase()
 
@@ -251,6 +254,9 @@ export async function createPayPalOrder(input: {
       application_context: {
         brand_name: 'Kivunra',
         shipping_preference: 'NO_SHIPPING',
+        user_action: 'PAY_NOW',
+        ...(input.returnUrl ? { return_url: input.returnUrl } : {}),
+        ...(input.cancelUrl ? { cancel_url: input.cancelUrl } : {}),
       },
     }),
   })
