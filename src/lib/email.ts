@@ -1,28 +1,30 @@
 import { formatDate, formatMoney } from './format'
 
 /**
- * Transactional email via Resend's REST API.
+ * Transactional email with a provider switch.
  *
- * Only configure RESEND_API_KEY and INVOICE_EMAIL_FROM. The sender must be a
- * domain (or address) verified in Resend; for local testing Resend's
- * `onboarding@resend.dev` can only deliver to the account owner's address.
+ * - Brevo: set BREVO_API_KEY. Brevo can verify a single sender address, so a
+ *   custom domain is not required (recommended for deliverability though).
+ * - Resend: set RESEND_API_KEY. The shared `onboarding@resend.dev` sender can
+ *   only deliver to the Resend account owner.
+ *
+ * `EMAIL_PROVIDER` picks explicitly (`brevo` | `resend`). When unset, Brevo is
+ * preferred if its key exists, otherwise Resend. `INVOICE_EMAIL_FROM` is the
+ * verified sender for whichever provider is active.
  */
 
-const DEFAULT_RESEND_ENDPOINT = 'https://api.resend.com'
+const DEFAULT_RESEND_BASE = 'https://api.resend.com'
+const DEFAULT_BREVO_BASE = 'https://api.brevo.com'
 
-/** Optional override so tests can point at a local mock server. */
-function resendEndpoint(): string {
-  const base = process.env.RESEND_API_URL?.trim() || DEFAULT_RESEND_ENDPOINT
-  return `${base.replace(/\/$/, '')}/emails`
-}
-
-/** Connection-level failures prove the request never reached Resend. */
+/** Connection-level failures prove the request never reached the provider. */
 const CONNECT_ERROR_CODES = new Set([
   'ENOTFOUND',
   'EAI_AGAIN',
   'ECONNREFUSED',
   'UND_ERR_CONNECT_TIMEOUT',
 ])
+
+type EmailProvider = 'brevo' | 'resend'
 
 export class EmailDeliveryError extends Error {
   readonly status: number
@@ -34,8 +36,30 @@ export class EmailDeliveryError extends Error {
   }
 }
 
+function configuredProvider(): EmailProvider | null {
+  const explicit = process.env.EMAIL_PROVIDER?.trim().toLowerCase()
+
+  if (explicit === 'brevo') {
+    return process.env.BREVO_API_KEY ? 'brevo' : null
+  }
+
+  if (explicit === 'resend') {
+    return process.env.RESEND_API_KEY ? 'resend' : null
+  }
+
+  if (process.env.BREVO_API_KEY) {
+    return 'brevo'
+  }
+
+  if (process.env.RESEND_API_KEY) {
+    return 'resend'
+  }
+
+  return null
+}
+
 export function isEmailConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.INVOICE_EMAIL_FROM)
+  return Boolean(configuredProvider() && process.env.INVOICE_EMAIL_FROM)
 }
 
 function isConnectError(error: unknown): boolean {
@@ -52,38 +76,43 @@ function isConnectError(error: unknown): boolean {
   return CONNECT_ERROR_CODES.has(code)
 }
 
-async function postResend(body: unknown, attempts = 3): Promise<{ id?: string }> {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    throw new EmailDeliveryError('Email sending is not configured on this deployment.', 503)
+function providerError(payload: unknown, status: number): string {
+  if (payload && typeof payload === 'object' && 'message' in payload) {
+    const message = (payload as { message?: unknown }).message
+    if (typeof message === 'string' && message) {
+      return message
+    }
   }
 
+  return `Email provider rejected the message (${status}).`
+}
+
+async function postWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  attempts = 3
+): Promise<Record<string, unknown> | null> {
   let lastError: unknown
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(resendEndpoint(), {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(20_000),
       })
 
       const payload = (await response.json().catch(() => null)) as
-        | { id?: string; message?: string }
+        | Record<string, unknown>
         | null
 
       if (!response.ok) {
-        throw new EmailDeliveryError(
-          payload?.message || `Email provider rejected the message (${response.status}).`,
-          502
-        )
+        throw new EmailDeliveryError(providerError(payload, response.status), 502)
       }
 
-      return payload ?? {}
+      return payload
     } catch (error) {
       lastError = error
 
@@ -100,6 +129,17 @@ async function postResend(body: unknown, attempts = 3): Promise<{ id?: string }>
   }
 
   throw lastError
+}
+
+function parseSender(from: string): { name: string; email: string } {
+  const match = from.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
+
+  if (match) {
+    const name = match[1].replace(/^"|"$/g, '').trim() || 'Kivunra'
+    return { name, email: match[2].trim() }
+  }
+
+  return { name: 'Kivunra', email: from.trim() }
 }
 
 function escapeHtml(value: string): string {
@@ -130,9 +170,75 @@ export interface InvoiceEmailInput {
   items: InvoiceEmailItem[]
 }
 
+async function sendWithResend(input: {
+  from: string
+  to: string
+  subject: string
+  html: string
+  text: string
+  replyTo: string | null
+}): Promise<string | null> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    throw new EmailDeliveryError('Resend is not configured on this deployment.', 503)
+  }
+
+  const base = (process.env.RESEND_API_URL?.trim() || DEFAULT_RESEND_BASE).replace(/\/$/, '')
+  const payload = await postWithRetry(
+    `${base}/emails`,
+    { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    {
+      from: input.from,
+      to: [input.to],
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+    }
+  )
+
+  return typeof payload?.id === 'string' ? payload.id : null
+}
+
+async function sendWithBrevo(input: {
+  from: string
+  to: string
+  subject: string
+  html: string
+  text: string
+  replyTo: string | null
+}): Promise<string | null> {
+  const apiKey = process.env.BREVO_API_KEY
+  if (!apiKey) {
+    throw new EmailDeliveryError('Brevo is not configured on this deployment.', 503)
+  }
+
+  const base = (process.env.BREVO_API_URL?.trim() || DEFAULT_BREVO_BASE).replace(/\/$/, '')
+  const payload = await postWithRetry(
+    `${base}/v3/smtp/email`,
+    {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    {
+      sender: parseSender(input.from),
+      to: [{ email: input.to }],
+      subject: input.subject,
+      htmlContent: input.html,
+      textContent: input.text,
+      ...(input.replyTo ? { replyTo: { email: input.replyTo } } : {}),
+    }
+  )
+
+  return typeof payload?.messageId === 'string' ? payload.messageId : null
+}
+
 export async function sendInvoiceEmail(input: InvoiceEmailInput): Promise<string | null> {
+  const provider = configuredProvider()
   const from = process.env.INVOICE_EMAIL_FROM
-  if (!from) {
+
+  if (!provider || !from) {
     throw new EmailDeliveryError('Email sending is not configured on this deployment.', 503)
   }
 
@@ -215,14 +321,14 @@ export async function sendInvoiceEmail(input: InvoiceEmailInput): Promise<string
     'Paid with PayPal. The link is unique to this invoice and does not require an account.',
   ].join('\n')
 
-  const result = await postResend({
+  const message = {
     from,
-    to: [input.to],
+    to: input.to,
     subject,
     html,
     text,
-    ...(input.replyTo ? { reply_to: input.replyTo } : {}),
-  })
+    replyTo: input.replyTo,
+  }
 
-  return result.id ?? null
+  return provider === 'brevo' ? sendWithBrevo(message) : sendWithResend(message)
 }

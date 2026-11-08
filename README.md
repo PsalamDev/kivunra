@@ -117,15 +117,26 @@ after a successful checkout.
 
 ## Emailing invoices
 
-Set `RESEND_API_KEY` and `INVOICE_EMAIL_FROM` (a sender verified in Resend) to
-enable the **Email Invoice** button on an invoice. The server re-reads the
-invoice, requires a customer email address, and emails the public pay link plus
-the outstanding balance and line items. The link is derived from the invoice id
-and `INVOICE_TOKEN_SECRET`; the browser never supplies a URL or amount. The
-owner's email is used as `Reply-To`.
+Set `INVOICE_EMAIL_FROM` to a sender verified with one provider and the matching
+API key:
+
+| Provider | Key | Sender verification |
+|---|---|---|
+| Brevo | `BREVO_API_KEY` | Verify a single email address in **Senders** — no DNS needed |
+| Resend | `RESEND_API_KEY` | `onboarding@resend.dev` only reaches the account owner; other recipients need a verified domain |
+
+`EMAIL_PROVIDER=brevo|resend` selects one explicitly. When unset, the provider
+with a key is used (Brevo wins if both are set).
+
+The **Email Invoice** button then re-reads the invoice on the server, requires a
+customer email address, and sends the public pay link plus the outstanding
+balance and line items. The link is derived from the invoice id and
+`INVOICE_TOKEN_SECRET`; the browser never supplies a URL or amount. The owner's
+email is used as `Reply-To`.
 
 Invoices must be published first, and invoices already paid in full are not
-re-sent. If Resend rejects the message the API returns the provider's reason.
+re-sent. If the provider rejects the message the API returns the provider's
+reason.
 
 ## AI invoice drafting
 
@@ -145,8 +156,8 @@ never creates an invoice directly, and every attempt is recorded in
 See `.env.example`. In addition to the Supabase keys, set
 `INVOICE_TOKEN_SECRET` to a random value of at least 32 characters
 (`openssl rand -hex 32`). It signs public invoice links — rotating it
-invalidates every existing pay link. Set `RESEND_API_KEY` and
-`INVOICE_EMAIL_FROM` to enable emailing invoices; without them the button
+invalidates every existing pay link. Set `BREVO_API_KEY` or `RESEND_API_KEY`
+plus `INVOICE_EMAIL_FROM` to enable emailing invoices; without them the button
 returns a clear "not configured" error.
 
 ## Deploying
