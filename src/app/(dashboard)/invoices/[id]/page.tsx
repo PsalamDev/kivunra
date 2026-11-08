@@ -96,6 +96,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [emailing, setEmailing] = useState(false)
+  const [emailStatus, setEmailStatus] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
 
   const fetchInvoice = useCallback(async () => {
     try {
@@ -136,6 +139,29 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       setPublishError('Failed to publish invoice')
     } finally {
       setPublishing(false)
+    }
+  }
+
+  const emailInvoice = async () => {
+    setEmailing(true)
+    setEmailStatus(null)
+    setEmailError(null)
+
+    try {
+      const res = await fetch(`/api/invoices/${id}/email`, { method: 'POST' })
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        setEmailError(data?.error || 'Could not send the invoice email')
+        return
+      }
+
+      setEmailStatus(`Sent to ${data?.to ?? 'the customer'}`)
+    } catch (error) {
+      console.error('Error emailing invoice:', error)
+      setEmailError('Could not send the invoice email')
+    } finally {
+      setEmailing(false)
     }
   }
 
@@ -352,18 +378,41 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           </CardHeader>
           <CardContent>
             <p className="text-gray-600 mb-4">Share this secure link with your customer:</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input value={invoice.public_url} readOnly />
-              <Button
-                onClick={() => {
-                  if (invoice.public_url) {
-                    navigator.clipboard.writeText(invoice.public_url)
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (invoice.public_url) {
+                      navigator.clipboard.writeText(invoice.public_url)
+                    }
+                  }}
+                >
+                  Copy Link
+                </Button>
+                <Button
+                  onClick={emailInvoice}
+                  disabled={emailing || !invoice.customers?.email}
+                  title={
+                    invoice.customers?.email
+                      ? undefined
+                      : 'Add an email address to this customer first'
                   }
-                }}
-              >
-                Copy Link
-              </Button>
+                >
+                  {emailing ? 'Sending...' : 'Email Invoice'}
+                </Button>
+              </div>
             </div>
+            {emailStatus && (
+              <p className="mt-3 text-sm text-green-700">{emailStatus}</p>
+            )}
+            {emailError && <p className="mt-3 text-sm text-red-700">{emailError}</p>}
+            {!invoice.customers?.email && (
+              <p className="mt-3 text-sm text-gray-500">
+                Add an email address to this customer to send the invoice.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

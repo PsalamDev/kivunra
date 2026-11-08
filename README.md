@@ -115,6 +115,18 @@ hashed token as the pay link — showing completed payments, refunds, net paid
 and the remaining balance. Receipt links appear on the public invoice page and
 after a successful checkout.
 
+## Emailing invoices
+
+Set `RESEND_API_KEY` and `INVOICE_EMAIL_FROM` (a sender verified in Resend) to
+enable the **Email Invoice** button on an invoice. The server re-reads the
+invoice, requires a customer email address, and emails the public pay link plus
+the outstanding balance and line items. The link is derived from the invoice id
+and `INVOICE_TOKEN_SECRET`; the browser never supplies a URL or amount. The
+owner's email is used as `Reply-To`.
+
+Invoices must be published first, and invoices already paid in full are not
+re-sent. If Resend rejects the message the API returns the provider's reason.
+
 ## AI invoice drafting
 
 Set `GROQ_API_KEY` to enable the AI assistant on **Invoices → Create Invoice**.
@@ -133,7 +145,9 @@ never creates an invoice directly, and every attempt is recorded in
 See `.env.example`. In addition to the Supabase keys, set
 `INVOICE_TOKEN_SECRET` to a random value of at least 32 characters
 (`openssl rand -hex 32`). It signs public invoice links — rotating it
-invalidates every existing pay link.
+invalidates every existing pay link. Set `RESEND_API_KEY` and
+`INVOICE_EMAIL_FROM` to enable emailing invoices; without them the button
+returns a clear "not configured" error.
 
 ## Checks
 
