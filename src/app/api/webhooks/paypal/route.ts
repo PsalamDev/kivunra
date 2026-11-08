@@ -220,6 +220,18 @@ export async function POST(request: NextRequest) {
       if (!PERMANENT_RPC_ERRORS.has(recordError.code ?? '')) {
         return apiError(500, 'Could not process webhook')
       }
+    } else {
+      console.info(
+        '[paypal webhook] capture recorded',
+        JSON.stringify({
+          eventId: event.id,
+          orderId,
+          captureId,
+          amount,
+          currency,
+          invoiceId: order.invoice_id,
+        })
+      )
     }
   } else if (REFUND_EVENT_TYPES.has(event.event_type)) {
     const resource = event.resource ?? {}
@@ -282,10 +294,28 @@ export async function POST(request: NextRequest) {
       if (!PERMANENT_RPC_ERRORS.has(refundError.code ?? '')) {
         return apiError(500, 'Could not process webhook')
       }
+    } else {
+      console.info(
+        '[paypal webhook] refund recorded',
+        JSON.stringify({
+          eventId: event.id,
+          eventType: event.event_type,
+          captureId,
+          refundId,
+          amount,
+          currency,
+          status: refundStatus,
+        })
+      )
     }
   }
 
   await markProcessed()
+
+  console.info(
+    '[paypal webhook] event processed',
+    JSON.stringify({ eventId: event.id, eventType: event.event_type })
+  )
 
   return NextResponse.json({ received: true })
 }

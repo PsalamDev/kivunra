@@ -250,6 +250,21 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     fully_paid?: boolean
   }
 
+  // Deliberately structured: order, capture and invoice ids make a payment
+  // traceable across PayPal, the app logs and the webhook event table.
+  console.info(
+    '[paypal] capture recorded',
+    JSON.stringify({
+      orderId: orderID,
+      captureId: capture.id,
+      amount: capturedAmount,
+      currency,
+      invoiceId: invoice.id,
+      invoiceStatus: result.invoice_status ?? invoice.status,
+      reconciled,
+    })
+  )
+
   const total = Number(invoice.total ?? 0)
   const capturedTotal = Number(result.captured ?? capturedSoFar + capturedAmount)
 

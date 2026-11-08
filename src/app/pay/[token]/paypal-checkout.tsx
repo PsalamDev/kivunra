@@ -131,7 +131,6 @@ export function PayPalCheckout({
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [receiptReady, setReceiptReady] = useState(false)
 
   const captureOrder = useCallback(
     async (orderID: string) => {
@@ -155,16 +154,15 @@ export function PayPalCheckout({
         const data = result.data
 
         if (data?.status === 'COMPLETED') {
-          setReceiptReady(true)
           setMessage(
             data.invoice_status === 'Paid'
               ? 'Payment received in full — thank you.'
               : 'Partial payment received — thank you.'
           )
-          router.replace(`/pay/${token}/receipt`)
+          router.replace(`/pay/${token}/success`)
         } else {
           setMessage('Your payment is pending confirmation. This page will update once it clears.')
-          router.refresh()
+          router.replace(`/pay/${token}/success?status=pending`)
         }
       } finally {
         orderInFlight.current = false
@@ -280,14 +278,6 @@ export function PayPalCheckout({
       {message && (
         <p role="status" className="mt-3 text-center text-sm font-medium text-green-700">
           {message}
-        </p>
-      )}
-
-      {receiptReady && (
-        <p className="mt-2 text-center text-sm">
-          <a href={`/pay/${token}/receipt`} className="font-medium text-[#0EA58B] hover:underline">
-            View receipt
-          </a>
         </p>
       )}
 

@@ -116,5 +116,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return apiError(500, 'Could not start PayPal checkout. Please try again.')
   }
 
+  console.info(
+    '[paypal] order created',
+    JSON.stringify({
+      orderId: order.id,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      amount,
+      currency,
+    })
+  )
+
   return NextResponse.json({ id: order.id }, { status: 201 })
 }
