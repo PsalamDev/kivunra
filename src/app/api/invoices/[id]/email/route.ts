@@ -134,8 +134,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       ? user.user_metadata.full_name.trim()
       : null
 
+  let messageId: string | null = null
+
   try {
-    await sendInvoiceEmail({
+    messageId = await sendInvoiceEmail({
       to: customerEmail,
       customerName: invoice.customers?.name ?? null,
       invoiceNumber: invoice.invoice_number,
@@ -156,5 +158,5 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return apiError(502, 'Could not send the invoice email. Please try again.')
   }
 
-  return NextResponse.json({ sent: true, to: customerEmail })
+  return NextResponse.json({ sent: true, to: customerEmail, id: messageId })
 }
