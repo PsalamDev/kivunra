@@ -139,6 +139,7 @@ export function PayPalCheckout({
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   const captureOrder = useCallback(
     async (orderID: string) => {
@@ -191,6 +192,30 @@ export function PayPalCheckout({
   useEffect(() => {
     let cancelled = false
     let buttons: PayPalButtonsInstance | null = null
+    let observer: MutationObserver | null = null
+    let renderTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const clearWatch = () => {
+      observer?.disconnect()
+      observer = null
+      if (renderTimeout) clearTimeout(renderTimeout)
+      renderTimeout = null
+    }
+
+    // PayPal's render() promise does not always settle even when the button is
+    // on screen, so readiness is also detected from the container itself.
+    const markRendered = () => {
+      if (cancelled) return
+      clearWatch()
+      setReady(true)
+      setError(null)
+    }
+
+    const fail = (message: string) => {
+      if (cancelled) return
+      clearWatch()
+      setError(message)
+    }
 
     setReady(false)
     setError(null)
@@ -199,7 +224,19 @@ export function PayPalCheckout({
       .then((paypal) => {
         if (cancelled || !containerRef.current) return
 
-        containerRef.current.innerHTML = ''
+        const container = containerRef.current
+        container.innerHTML = ''
+
+        observer = new MutationObserver(() => {
+          if (container.childElementCount > 0) markRendered()
+        })
+        observer.observe(container, { childList: true, subtree: true })
+
+        renderTimeout = setTimeout(() => {
+          if (!cancelled && container.childElementCount === 0) {
+            fail('Could not load PayPal checkout. Please try again.')
+          }
+        }, 20_000)
 
         buttons = paypal.Buttons({
           style: {
@@ -249,23 +286,20 @@ export function PayPalCheckout({
         })
 
         buttons
-          .render(containerRef.current)
-          .then(() => {
-            if (!cancelled) setReady(true)
-          })
-          .catch(() => setError('Could not load PayPal checkout. Please refresh and try again.'))
+          .render(container)
+          .then(markRendered)
+          .catch(() => fail('Could not load PayPal checkout. Please try again.'))
       })
       .catch(() => {
-        if (!cancelled) {
-          setError('Could not load PayPal checkout. Please refresh and try again.')
-        }
+        fail('Could not load PayPal checkout. Please try again.')
       })
 
     return () => {
       cancelled = true
+      clearWatch()
       buttons?.close()
     }
-  }, [captureOrder, clientId, currency, token])
+  }, [attempt, captureOrder, clientId, currency, token])
 
   return (
     <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
@@ -290,9 +324,18 @@ export function PayPalCheckout({
       )}
 
       {error && (
-        <p role="alert" className="mt-3 text-center text-sm text-red-700">
-          {error}
-        </p>
+        <div className="mt-3 text-center">
+          <p role="alert" className="text-sm text-red-700">
+            {error}
+          </p>
+          <button
+            type="button"
+            onClick={() => setAttempt((value) => value + 1)}
+            className="mt-2 text-sm font-medium text-[#0EA58B] hover:underline"
+          >
+            Try again
+          </button>
+        </div>
       )}
 
       <p className="mt-3 text-center text-xs text-gray-400">
