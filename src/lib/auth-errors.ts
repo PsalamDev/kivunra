@@ -27,6 +27,10 @@ const FRIENDLY: Friendly[] = [
     'Your password is too short.',
   ],
   [
+    /new password should be different from the old password/i,
+    'Choose a password you have not used before.',
+  ],
+  [
     /signups? not allowed/i,
     'New signups are disabled for this project.',
   ],

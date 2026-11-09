@@ -50,6 +50,14 @@ export default async function LoginPage({
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#0EA58B] focus:border-[#0EA58B]"
             />
           </div>
+          <div className="text-right">
+            <a
+              href="/forgot-password"
+              className="text-sm font-medium text-[#0EA58B] hover:text-[#0c9479]"
+            >
+              Forgot password?
+            </a>
+          </div>
           <button
             formAction={login}
             type="submit"

@@ -178,3 +178,74 @@ export async function signoutAction(): Promise<void> {
   revalidatePath('/', 'layout')
   redirect('/login')
 }
+
+/**
+ * Sends a recovery link that lands on /reset-password with a live session.
+ * The reply is identical whether or not the address exists, so the form cannot
+ * be used to enumerate accounts.
+ */
+export async function requestPasswordResetAction(formData: FormData): Promise<void> {
+  const email = String(formData.get('email') ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (!email) {
+    redirect('/forgot-password?error=' + encodeURIComponent('Enter your email address.'))
+  }
+
+  const origin = await requestOrigin()
+  const supabase = await createClient()
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/callback?next=/reset-password`,
+  })
+
+  if (error) {
+    const message = friendlyAuthError(
+      error.message,
+      'Could not send the reset email. Please try again.'
+    )
+    redirect('/forgot-password?error=' + encodeURIComponent(message))
+  }
+
+  redirect('/forgot-password?sent=1')
+}
+
+/** Sets a new password for the session created by the recovery link. */
+export async function updatePasswordAction(formData: FormData): Promise<void> {
+  const password = String(formData.get('password') ?? '')
+  const confirmation = String(formData.get('confirm_password') ?? '')
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect(
+      '/forgot-password?error=' +
+        encodeURIComponent('That reset link has expired. Request a new one.')
+    )
+  }
+
+  if (password.length < 6) {
+    redirect('/reset-password?error=' + encodeURIComponent('Use at least 6 characters.'))
+  }
+
+  if (password !== confirmation) {
+    redirect('/reset-password?error=' + encodeURIComponent('Those passwords do not match.'))
+  }
+
+  const { error } = await supabase.auth.updateUser({ password })
+
+  if (error) {
+    const message = friendlyAuthError(
+      error.message,
+      'Could not update your password. Please try again.'
+    )
+    redirect('/reset-password?error=' + encodeURIComponent(message))
+  }
+
+  revalidatePath('/', 'layout')
+  redirect('/settings?message=' + encodeURIComponent('Your password has been updated.'))
+}

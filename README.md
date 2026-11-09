@@ -157,6 +157,29 @@ link falls back to the Site URL:
 - Site URL: `https://kivunra.vercel.app`
 - Redirect URLs: `https://kivunra.vercel.app/**`, `http://localhost:3000/**`
 
+### Settings and password recovery
+
+`/settings` is the account screen. It lets a signed-in user:
+
+- rename the **journal** (the same `user_metadata.journal_name` used as the
+  invoice issuer, so the change shows up on existing public invoices too), and
+- change their password, which first re-checks the current password with
+  `signInWithPassword` before calling `updateUser`.
+
+The email address is read-only there; changing it needs an admin.
+
+Password recovery starts at `/forgot-password` and calls
+`supabase.auth.resetPasswordForEmail()` with
+`redirectTo=<origin>/auth/callback?next=/reset-password`. Supabase sends the
+recovery mail through its Auth SMTP settings (Brevo here), and `/auth/callback`
+exchanges the link for a session before `/reset-password` renders the form. The
+reply is intentionally identical for unknown addresses so the form cannot be
+used to discover registered emails. Recovery links are single-use and expire
+(one hour by default); opening `/reset-password` without a session shows the
+"expired or already used" state. The **Authentication → Emails → Reset password**
+template must keep `{{ .ConfirmationURL }}` for the link to come back to
+`/auth/callback`.
+
 ### Why "Resend" is not the Resend service
 
 `supabase.auth.resend()` is a Supabase SDK method that asks Supabase to issue a

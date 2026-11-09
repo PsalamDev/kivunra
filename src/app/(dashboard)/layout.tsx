@@ -62,6 +62,7 @@ export default async function DashboardLayout({
             <Link href="/customers" className="hover:text-[#0EA58B]">Customers</Link>
             <Link href="/payments" className="hover:text-[#0EA58B]">Payments</Link>
             <Link href="/insights" className="hover:text-[#0EA58B]">Insights</Link>
+            <Link href="/settings" className="hover:text-[#0EA58B]">Settings</Link>
             <NotificationBell />
             <span className="text-sm text-gray-300">{user.email}</span>
             <form action={signout}>
