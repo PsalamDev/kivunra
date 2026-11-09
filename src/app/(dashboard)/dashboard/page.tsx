@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDate, formatMoney } from '@/lib/format'
 import { sumByCurrency } from '@/lib/invoices'
+import { markOverdueInvoices } from '@/lib/overdue'
 import {
   remainingBalance,
   sumCapturedByInvoice,
@@ -57,6 +58,8 @@ export default async function DashboardPage() {
   if (!user) {
     redirect('/login')
   }
+
+  await markOverdueInvoices(supabase, user.id)
 
   const [invoiceResult, captureResult, ledgerResult] = await Promise.all([
     supabase

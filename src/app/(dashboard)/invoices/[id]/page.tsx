@@ -96,6 +96,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [emailing, setEmailing] = useState(false)
   const [emailStatus, setEmailStatus] = useState<string | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
@@ -139,6 +142,63 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       setPublishError('Failed to publish invoice')
     } finally {
       setPublishing(false)
+    }
+  }
+
+  const cancelInvoice = async () => {
+    if (!window.confirm('Cancel this invoice? Your customer will no longer be able to pay it.')) {
+      return
+    }
+
+    setCancelling(true)
+    setActionError(null)
+
+    try {
+      const res = await fetch(`/api/invoices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Cancelled' }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setActionError(data?.error || 'Failed to cancel invoice')
+        return
+      }
+
+      await fetchInvoice()
+    } catch (error) {
+      console.error('Error cancelling invoice:', error)
+      setActionError('Failed to cancel invoice')
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  const deleteInvoice = async () => {
+    if (!window.confirm('Delete this invoice permanently? This cannot be undone.')) {
+      return
+    }
+
+    setDeleting(true)
+    setActionError(null)
+
+    try {
+      const res = await fetch(`/api/invoices/${id}`, { method: 'DELETE' })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setActionError(data?.error || 'Failed to delete invoice')
+        return
+      }
+
+      router.push('/invoices')
+      router.refresh()
+    } catch (error) {
+      console.error('Error deleting invoice:', error)
+      setActionError('Failed to delete invoice')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -200,6 +260,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const captures = (invoice.payment_orders ?? []).flatMap(
     (order) => order.payment_captures ?? []
   )
+  const isClosed = invoice.status === 'Paid' || invoice.status === 'Cancelled'
+  const canEdit = totals.net <= 0.01 && !isClosed
+  const canCancel = totals.net <= 0.01 && invoice.status !== 'Draft' && !isClosed
+  const canDelete = totals.net <= 0.01 && invoice.status !== 'Paid'
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -210,13 +274,36 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             {invoice.status}
           </span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => router.push('/invoices')}>
             Back to Invoices
           </Button>
+          {canEdit && (
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
+            >
+              Edit Invoice
+            </Button>
+          )}
           {invoice.status === 'Draft' && (
             <Button onClick={publishInvoice} disabled={publishing} className="bg-[#0EA58B] hover:bg-[#0c9479]">
               {publishing ? 'Publishing...' : 'Publish Invoice'}
+            </Button>
+          )}
+          {canCancel && (
+            <Button variant="outline" onClick={cancelInvoice} disabled={cancelling}>
+              {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              onClick={deleteInvoice}
+              disabled={deleting}
+              className="text-red-600 hover:text-red-700"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
             </Button>
           )}
         </div>
@@ -224,6 +311,14 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       {publishError && (
         <div className="mb-6 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {publishError}
+        </div>
+      )}
+      {actionError && (
+        <div
+          role="alert"
+          className="mb-6 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
+          {actionError}
         </div>
       )}
 
@@ -371,7 +466,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </CardContent>
       </Card>
 
-      {invoice.public_url && (
+      {invoice.public_url && invoice.status !== 'Cancelled' && (
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Payment</CardTitle>

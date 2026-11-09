@@ -234,6 +234,27 @@ existing one, and returns line items, currency and due date for the form. It
 never creates an invoice directly, and every attempt is recorded in
 `ai_interactions` for audit and rate limiting.
 
+## Invoice lifecycle
+
+Draft and unpaid invoices can be edited from the invoice page: customer, line
+items and due date. The currency and invoice number never change. Publishing
+happens from the same page and issues the public pay link.
+
+The API enforces the money rules:
+
+- An invoice with captured payments (net of completed refunds) can still be
+  cancelled or deleted only after those payments are refunded.
+- `Paid` and `Cancelled` invoices cannot be edited, and `Paid` invoices cannot
+  be deleted.
+- `Draft → Published` is a one-way transition; nothing sets `Paid` manually.
+
+Open invoices (`Published`, `PartiallyPaid`) whose due date is before today
+(UTC) are flipped to `Overdue` whenever the dashboard, invoice list or invoice
+detail loads. A Vercel Cron job (`/api/cron/mark-overdue`, daily at 02:00 UTC)
+covers accounts that are not browsing the app. Vercel sends
+`Authorization: Bearer $CRON_SECRET`, so set `CRON_SECRET` in the deployment;
+without it the route returns `503`.
+
 ## Required environment variables
 
 See `.env.example`. In addition to the Supabase keys, set
@@ -241,7 +262,8 @@ See `.env.example`. In addition to the Supabase keys, set
 (`openssl rand -hex 32`). It signs public invoice links — rotating it
 invalidates every existing pay link. Set `BREVO_API_KEY` or `RESEND_API_KEY`
 plus `INVOICE_EMAIL_FROM` to enable emailing invoices; without them the button
-returns a clear "not configured" error.
+returns a clear "not configured" error. Set `CRON_SECRET` to a random value so
+the daily overdue sweep can authenticate.
 
 ## Deploying
 
@@ -256,6 +278,8 @@ Deploy to Vercel (or any Node host), then set every variable from
 4. Create the PayPal webhook against
    `${NEXT_PUBLIC_APP_URL}/api/webhooks/paypal` and store its id in
    `PAYPAL_WEBHOOK_ID`.
+5. Set `CRON_SECRET`. `vercel.json` registers the daily overdue sweep; Vercel
+   sends it as a Bearer token automatically.
 
 If a webhook already exists, update its URL instead of creating a second one:
 

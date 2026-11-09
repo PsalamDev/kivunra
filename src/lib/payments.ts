@@ -47,3 +47,49 @@ export function remainingBalance(
 
   return roundMoney(Math.max(0, invoiceTotal - (captured ?? 0)))
 }
+
+export interface PaymentTrailRefund {
+  amount: number | string | null
+  status: string
+}
+
+export interface PaymentTrailCapture {
+  amount: number | string | null
+  status: string
+  payment_refunds?: PaymentTrailRefund[] | null
+}
+
+export interface InvoicePaymentTrail {
+  payment_orders?: Array<{ payment_captures?: PaymentTrailCapture[] | null }> | null
+}
+
+function amountOf(value: number | string | null | undefined): number {
+  const amount = Number(value ?? 0)
+  return Number.isFinite(amount) ? amount : 0
+}
+
+/**
+ * Completed captures minus completed refunds for one invoice's nested payment
+ * trail. Used to decide whether an invoice can still be edited, cancelled or
+ * deleted without disturbing recorded money.
+ */
+export function netCapturedAmount(invoice: InvoicePaymentTrail): number {
+  let captured = 0
+  let refunded = 0
+
+  for (const order of invoice.payment_orders ?? []) {
+    for (const capture of order.payment_captures ?? []) {
+      if (capture.status === 'COMPLETED') {
+        captured += amountOf(capture.amount)
+      }
+
+      for (const refund of capture.payment_refunds ?? []) {
+        if (refund.status === 'COMPLETED') {
+          refunded += amountOf(refund.amount)
+        }
+      }
+    }
+  }
+
+  return roundMoney(Math.max(0, captured - refunded))
+}

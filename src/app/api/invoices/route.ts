@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { databaseErrorResponse, apiError } from '@/lib/api-error'
 import { INVOICE_SELECT, serializeInvoice } from '@/lib/invoices'
+import { markOverdueInvoices } from '@/lib/overdue'
 import { createClient } from '@/lib/supabase/server'
 import { createInvoiceSchema } from '@/lib/validation'
 
@@ -14,6 +15,8 @@ export async function GET(request: NextRequest) {
   if (!user) {
     return apiError(401, 'Unauthorized')
   }
+
+  await markOverdueInvoices(supabase, user.id)
 
   const { data, error } = await supabase
     .from('invoices')

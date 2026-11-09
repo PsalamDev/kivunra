@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMonthLabel, formatMoney } from '@/lib/format'
+import { markOverdueInvoices } from '@/lib/overdue'
 import {
   remainingBalance,
   sumCapturedByInvoice,
@@ -55,6 +56,8 @@ export default async function InsightsPage() {
   if (!user) {
     redirect('/login')
   }
+
+  await markOverdueInvoices(supabase, user.id)
 
   const buckets = monthBuckets()
   const rangeStart = buckets[0].start.toISOString()
