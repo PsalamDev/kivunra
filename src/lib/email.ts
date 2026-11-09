@@ -178,7 +178,7 @@ async function sendWithResend(input: {
   text: string
   replyTo: string | null
 }): Promise<string | null> {
-  const apiKey = process.env.RESEND_API_KEY
+  const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) {
     throw new EmailDeliveryError('Resend is not configured on this deployment.', 503)
   }
@@ -208,7 +208,7 @@ async function sendWithBrevo(input: {
   text: string
   replyTo: string | null
 }): Promise<string | null> {
-  const apiKey = process.env.BREVO_API_KEY
+  const apiKey = process.env.BREVO_API_KEY?.trim()
   if (!apiKey) {
     throw new EmailDeliveryError('Brevo is not configured on this deployment.', 503)
   }
@@ -236,7 +236,7 @@ async function sendWithBrevo(input: {
 
 export async function sendInvoiceEmail(input: InvoiceEmailInput): Promise<string | null> {
   const provider = configuredProvider()
-  const from = process.env.INVOICE_EMAIL_FROM
+  const from = process.env.INVOICE_EMAIL_FROM?.trim()
 
   if (!provider || !from) {
     throw new EmailDeliveryError('Email sending is not configured on this deployment.', 503)

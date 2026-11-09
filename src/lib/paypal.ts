@@ -9,20 +9,32 @@ export function isPayPalCurrency(value: string): value is PayPalCurrency {
   return (PAYPAL_CURRENCIES as readonly string[]).includes(value.toUpperCase())
 }
 
+/**
+ * Environment values copied into a hosting dashboard often carry a trailing
+ * newline. PayPal rejects those (the JS SDK answers 400 for a client id ending
+ * in %0A), so every credential is trimmed at the point it is read.
+ */
+function envValue(name: string, value: string | undefined): string {
+  if (!value) return ''
+  return value.trim()
+}
+
 export function isPayPalConfigured(): boolean {
   return Boolean(
-    process.env.PAYPAL_CLIENT_ID &&
-      process.env.PAYPAL_CLIENT_SECRET &&
-      process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
+    envValue('PAYPAL_CLIENT_ID', process.env.PAYPAL_CLIENT_ID) &&
+      envValue('PAYPAL_CLIENT_SECRET', process.env.PAYPAL_CLIENT_SECRET) &&
+      envValue('NEXT_PUBLIC_PAYPAL_CLIENT_ID', process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID)
   )
 }
 
 export function isPayPalWebhookConfigured(): boolean {
-  return isPayPalConfigured() && Boolean(process.env.PAYPAL_WEBHOOK_ID)
+  return isPayPalConfigured() && Boolean(envValue('PAYPAL_WEBHOOK_ID', process.env.PAYPAL_WEBHOOK_ID))
 }
 
 function apiBase(): string {
-  return process.env.PAYPAL_ENVIRONMENT === 'live' ? LIVE_API_BASE : SANDBOX_API_BASE
+  return envValue('PAYPAL_ENVIRONMENT', process.env.PAYPAL_ENVIRONMENT) === 'live'
+    ? LIVE_API_BASE
+    : SANDBOX_API_BASE
 }
 
 /**
@@ -105,8 +117,8 @@ async function getAccessToken(forceRefresh = false): Promise<string> {
     return tokenCache.accessToken
   }
 
-  const clientId = process.env.PAYPAL_CLIENT_ID
-  const clientSecret = process.env.PAYPAL_CLIENT_SECRET
+  const clientId = envValue('PAYPAL_CLIENT_ID', process.env.PAYPAL_CLIENT_ID)
+  const clientSecret = envValue('PAYPAL_CLIENT_SECRET', process.env.PAYPAL_CLIENT_SECRET)
 
   if (!clientId || !clientSecret) {
     throw new Error('PayPal is not configured')
@@ -321,7 +333,7 @@ export async function verifyPayPalWebhookSignature(
   headers: Headers,
   event: unknown
 ): Promise<boolean> {
-  const webhookId = process.env.PAYPAL_WEBHOOK_ID
+  const webhookId = envValue('PAYPAL_WEBHOOK_ID', process.env.PAYPAL_WEBHOOK_ID)
   if (!webhookId) {
     return false
   }
@@ -369,5 +381,7 @@ export async function verifyPayPalWebhookSignature(
 }
 
 export function payPalEnvironmentLabel(): string {
-  return process.env.PAYPAL_ENVIRONMENT === 'live' ? 'live' : 'sandbox'
+  return envValue('PAYPAL_ENVIRONMENT', process.env.PAYPAL_ENVIRONMENT) === 'live'
+    ? 'live'
+    : 'sandbox'
 }

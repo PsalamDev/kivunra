@@ -89,7 +89,7 @@ export default async function PublicInvoicePage({
   const isPaid = invoice.status === 'Paid' || amountDue <= 0.01
   const currency = invoice.currency.toUpperCase()
 
-  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
+  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID?.trim() || null
   const canPayWithPayPal =
     !isPaid && isPayPalConfigured() && Boolean(paypalClientId) && isPayPalCurrency(currency)
 

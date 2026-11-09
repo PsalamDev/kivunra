@@ -70,11 +70,19 @@ async function postForJson<T>(
 }
 
 function loadPayPalSdk(clientId: string, currency: string): Promise<PayPalSdk> {
+  // A stray newline from a hosting dashboard makes PayPal answer 400, so the
+  // id is normalised before it reaches the SDK URL.
+  const id = clientId.trim()
+
+  if (!id) {
+    return Promise.reject(new Error('PayPal client id is missing'))
+  }
+
   if (window.paypal) {
     return Promise.resolve(window.paypal)
   }
 
-  const key = `${clientId}:${currency}`
+  const key = `${id}:${currency}`
   const cached = sdkPromises.get(key)
   if (cached) return cached
 
@@ -92,7 +100,7 @@ function loadPayPalSdk(clientId: string, currency: string): Promise<PayPalSdk> {
 
     const script = document.createElement('script')
     script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(
-      clientId
+      id
     )}&currency=${encodeURIComponent(currency)}&intent=capture&components=buttons&disable-funding=credit`
     script.async = true
     script.dataset.kivunraPaypal = 'true'
