@@ -61,6 +61,7 @@ export default async function DashboardLayout({
             <Link href="/invoices" className="hover:text-[#0EA58B]">Invoices</Link>
             <Link href="/customers" className="hover:text-[#0EA58B]">Customers</Link>
             <Link href="/payments" className="hover:text-[#0EA58B]">Payments</Link>
+            <Link href="/calendar" className="hover:text-[#0EA58B]">Calendar</Link>
             <Link href="/insights" className="hover:text-[#0EA58B]">Insights</Link>
             <Link href="/settings" className="hover:text-[#0EA58B]">Settings</Link>
             <NotificationBell />

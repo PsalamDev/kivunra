@@ -281,6 +281,23 @@ curl -X POST "https://your-app.vercel.app/api/automation/invoice-draft" \
   }'
 ```
 
+## Billing calendar
+
+`/calendar` plots invoice due dates and completed PayPal captures on a
+[Bryntum Calendar](https://bryntum.com/products/calendar/) Community-tier
+widget. The Community tier is MIT-licensed and needs no key or license file.
+
+- Due dates are colored by invoice status: blue **Published**, amber
+  **Partially paid**, red **Overdue**, green **Paid**, gray **Draft** and
+  **Cancelled**.
+- Completed PayPal captures appear in teal on the day the payment was recorded.
+- Clicking an event opens that invoice.
+
+The view is read-only: dragging, resizing, event editing and context menus are
+disabled. Bryntum is loaded only in the browser and only on this route, so the
+rest of the app does not download its bundle. The calendar reads existing
+invoices and payment captures, so no database migration is required.
+
 ## Invoice lifecycle
 
 Draft and unpaid invoices can be edited from the invoice page: customer, line

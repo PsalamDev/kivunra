@@ -1,0 +1,19 @@
+/* Keep the calendar on Kivunra's palette without forking Bryntum's theme. */
+.billing-calendar {
+  --b-primary: #0ea58b;
+  --b-secondary: #12243a;
+
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+}
+
+.billing-calendar .b-calendar {
+  font-family: inherit;
+}
+
+.billing-calendar .b-cal-event-desc {
+  font-weight: 600;
+}
+
+.billing-calendar .b-calendar-cell.b-weekend {
+  background-color: #fafbfc;
+}
