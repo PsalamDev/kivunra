@@ -43,6 +43,9 @@ export async function loginAction(formData: FormData): Promise<void> {
 export async function signupAction(formData: FormData): Promise<void> {
   const supabase = await createClient()
   const { email, password } = credentials(formData)
+  const journalName = String(formData.get('journal_name') ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
 
   if (!email || !password) {
     redirect('/register?error=' + encodeURIComponent('Enter an email and password.'))
@@ -51,6 +54,16 @@ export async function signupAction(formData: FormData): Promise<void> {
   if (password.length < 6) {
     redirect(
       '/register?error=' + encodeURIComponent('Use at least 6 characters for your password.')
+    )
+  }
+
+  if (journalName.length < 2) {
+    redirect('/register?error=' + encodeURIComponent('Enter your journal or business name.'))
+  }
+
+  if (journalName.length > 80) {
+    redirect(
+      '/register?error=' + encodeURIComponent('Keep the journal name under 80 characters.')
     )
   }
 
@@ -63,6 +76,9 @@ export async function signupAction(formData: FormData): Promise<void> {
       // Without this the confirmation link falls back to the project's Site URL
       // (often localhost), which dead-ends once the app is deployed.
       emailRedirectTo: `${origin}/auth/callback?next=/dashboard`,
+      // The journal name is the issuer shown on invoices. It is kept on the
+      // user until they confirm, then used everywhere the owner is resolved.
+      data: { journal_name: journalName },
     },
   })
 
@@ -89,10 +105,71 @@ export async function signupAction(formData: FormData): Promise<void> {
     )
   }
 
-  redirect(
-    '/login?message=' +
-      encodeURIComponent('Check your email to confirm your account, then sign in.')
-  )
+  redirect(`/verify?email=${encodeURIComponent(email)}&sent=1`)
+}
+
+/** Back to the code screen, preserving the address the code was sent to. */
+function verifyPath(email: string, params: Record<string, string | undefined> = {}): string {
+  const search = new URLSearchParams({ email })
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, value)
+  }
+  return `/verify?${search.toString()}`
+}
+
+export async function verifyCodeAction(formData: FormData): Promise<void> {
+  const email = String(formData.get('email') ?? '')
+    .trim()
+    .toLowerCase()
+  const token = String(formData.get('code') ?? '').replace(/\s+/g, '')
+
+  if (!email) {
+    redirect('/register')
+  }
+
+  if (!/^\d{6}$/.test(token)) {
+    redirect(verifyPath(email, { error: 'Enter the 6-digit code from your email.' }))
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: 'signup' })
+
+  if (error) {
+    const message = friendlyAuthError(
+      error.message,
+      'That code could not be verified. Request a new one and try again.'
+    )
+    redirect(verifyPath(email, { error: message }))
+  }
+
+  revalidatePath('/', 'layout')
+  redirect('/dashboard')
+}
+
+export async function resendCodeAction(formData: FormData): Promise<void> {
+  const email = String(formData.get('email') ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (!email) {
+    redirect('/register')
+  }
+
+  const origin = await requestOrigin()
+  const supabase = await createClient()
+
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email,
+    options: { emailRedirectTo: `${origin}/auth/callback?next=/dashboard` },
+  })
+
+  if (error) {
+    const message = friendlyAuthError(error.message, 'Could not resend the code. Please try again.')
+    redirect(verifyPath(email, { error: message }))
+  }
+
+  redirect(verifyPath(email, { sent: '1' }))
 }
 
 export async function signoutAction(): Promise<void> {

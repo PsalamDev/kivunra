@@ -115,6 +115,54 @@ hashed token as the pay link — showing completed payments, refunds, net paid
 and the remaining balance. Receipt links appear on the public invoice page and
 after a successful checkout.
 
+## Accounts, journal name and confirmation codes
+
+Signing up asks for a **journal name**, email and password. The journal name is
+the business name shown as the issuer on invoices, receipts and the pay page; it
+is stored on the auth user as `user_metadata.journal_name`, with `Kivunra` as
+the fallback for accounts created before it existed.
+
+With **Confirm email** enabled, Supabase emails a 6-digit code and a confirmation
+link. `/verify` accepts the code (`supabase.auth.verifyOtp({ type: 'signup' })`)
+and the link lands on `/auth/callback`; either one creates the session.
+**Send a new code** calls `supabase.auth.resend()`.
+
+Confirmation mail is sent by **Supabase Auth**, not by the app's transactional
+provider, so two separate things must be set up:
+
+1. **Authentication → Emails → SMTP Settings** — point Supabase at Brevo
+   (`smtp-relay.brevo.com`, port `587`, the SMTP login and `xsmtpsib-…` key from
+   Brevo's SMTP page, sender `abdulsalambabalola225@gmail.com`). This removes the
+   built-in mailer's strict rate limit; Brevo's free plan allows 300 messages a
+   day. Supabase's own **Authentication → Rate Limits** still apply (30 emails
+   per hour by default).
+2. **Authentication → Emails → Confirm signup** — include the code in the
+   template. The default template only has a link, so keep both:
+
+   ```html
+   <h2>Confirm your Kivunra account</h2>
+   <p>Enter this code in the app:</p>
+   <p style="font-size: 28px; letter-spacing: 6px; font-weight: bold">{{ .Token }}</p>
+   <p>Or click to confirm:</p>
+   <p><a href="{{ .ConfirmationURL }}">Confirm my email</a></p>
+   ```
+
+   `{{ .Token }}` is the 6-digit code; `{{ .ConfirmationURL }}` already carries
+   the `emailRedirectTo` the app passes at signup.
+
+**Authentication → URL Configuration** must allow the deployment, otherwise the
+link falls back to the Site URL:
+
+- Site URL: `https://kivunra.vercel.app`
+- Redirect URLs: `https://kivunra.vercel.app/**`, `http://localhost:3000/**`
+
+### Why "Resend" is not the Resend service
+
+`supabase.auth.resend()` is a Supabase SDK method that asks Supabase to issue a
+new confirmation message. It is unrelated to [Resend](https://resend.com) the
+email provider, costs nothing, and is delivered through whatever SMTP Supabase
+is configured with — Brevo in this deployment.
+
 ## Emailing invoices
 
 Set `INVOICE_EMAIL_FROM` to a sender verified with one provider and the matching

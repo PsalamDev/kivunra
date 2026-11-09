@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { formatMoney } from '@/lib/format'
+import { getJournalName } from '@/lib/journal'
 import { completedCapturedAmount, invoiceAmountDue, loadPublicInvoice, refundedAmount } from '@/lib/public-invoice'
 import { isInvoiceTokenShape } from '@/lib/public-token'
 
@@ -111,6 +112,7 @@ export default async function PaymentSuccessPage({
   }
 
   const invoice = loaded.invoice
+  const journalName = await getJournalName(invoice.owner_user_id)
 
   if (invoice.status === 'Draft' || invoice.status === 'Cancelled') {
     notFound()
@@ -154,8 +156,8 @@ export default async function PaymentSuccessPage({
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="container mx-auto max-w-lg px-4">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-[#12243A]">Kivunra</h1>
-          <p className="text-sm text-gray-500">Move Smarter. Manage Better.</p>
+          <h1 className="text-2xl font-bold text-[#12243A]">{journalName}</h1>
+          <p className="text-sm text-gray-500">Payment status</p>
         </div>
 
         <div className="rounded-lg bg-white p-8 text-center shadow">

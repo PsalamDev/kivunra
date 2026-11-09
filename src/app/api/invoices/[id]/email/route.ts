@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { apiError, databaseErrorResponse } from '@/lib/api-error'
 import { EmailDeliveryError, isEmailConfigured, sendInvoiceEmail } from '@/lib/email'
 import { INVOICE_DETAIL_SELECT, serializeInvoice } from '@/lib/invoices'
+import { invoiceSenderName } from '@/lib/journal'
 import { createClient } from '@/lib/supabase/server'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -129,10 +130,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return apiError(400, 'This invoice is already paid in full.')
   }
 
-  const senderName =
-    typeof user.user_metadata?.full_name === 'string' && user.user_metadata.full_name.trim()
-      ? user.user_metadata.full_name.trim()
-      : null
+  const senderName = invoiceSenderName(user.user_metadata)
 
   let messageId: string | null = null
 

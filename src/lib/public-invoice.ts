@@ -2,7 +2,7 @@ import { hashInvoiceToken } from './public-token'
 import { createAdminClient, isServiceRoleConfigured } from './supabase/admin'
 
 export const PUBLIC_INVOICE_SELECT =
-  'id, invoice_number, total, currency, status, due_at, created_at, customers(name), invoice_items(description, quantity, unit_price, line_total), payment_orders(paypal_order_id, status, expected_amount, currency, created_at, payment_captures(id, amount, status, captured_at, payment_refunds(amount, status, refunded_at)))'
+  'id, owner_user_id, invoice_number, total, currency, status, due_at, created_at, customers(name), invoice_items(description, quantity, unit_price, line_total), payment_orders(paypal_order_id, status, expected_amount, currency, created_at, payment_captures(id, amount, status, captured_at, payment_refunds(amount, status, refunded_at)))'
 
 export interface PublicInvoiceRefund {
   amount: number | string | null
@@ -29,6 +29,7 @@ export interface PublicInvoiceOrder {
 
 export interface PublicInvoice {
   id: string
+  owner_user_id: string
   invoice_number: string
   total: number | string | null
   currency: string

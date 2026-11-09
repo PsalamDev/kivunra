@@ -21,6 +21,25 @@ export default async function RegisterPage({
         )}
         <form className="mt-8 space-y-6">
           <div>
+            <label htmlFor="journal_name" className="block text-sm font-medium text-gray-700">
+              Journal name
+            </label>
+            <input
+              id="journal_name"
+              name="journal_name"
+              type="text"
+              required
+              minLength={2}
+              maxLength={80}
+              autoComplete="organization"
+              placeholder="Brightline Studio"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#0EA58B] focus:border-[#0EA58B]"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              The business name shown as the issuer on your invoices.
+            </p>
+          </div>
+          <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email address
             </label>

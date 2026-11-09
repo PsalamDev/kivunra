@@ -3,14 +3,16 @@
  * "Invalid login credentials") that means nothing to an end user. These map the
  * common cases onto something actionable while leaving unknown messages intact.
  */
-const FRIENDLY: Array<[RegExp, string]> = [
+type Friendly = [RegExp, string | ((match: RegExpMatchArray) => string)]
+
+const FRIENDLY: Friendly[] = [
   [
     /email rate limit exceeded/i,
     'We have sent too many confirmation emails in the last hour. Try again shortly, or sign in if your account is already confirmed.',
   ],
   [
     /email not confirmed/i,
-    'Your email is not confirmed yet. Open the confirmation link we emailed you, then sign in.',
+    'Your email is not confirmed yet. Enter the code we emailed you, or open the confirmation link, then sign in.',
   ],
   [
     /invalid login credentials/i,
@@ -33,16 +35,25 @@ const FRIENDLY: Array<[RegExp, string]> = [
     'That email address is not valid.',
   ],
   [
+    /token has expired or is invalid/i,
+    'That code is incorrect or has expired. Check the newest email, or send a new code.',
+  ],
+  [
+    /invalid (otp|token)/i,
+    'That code is incorrect or has expired. Check the newest email, or send a new code.',
+  ],
+  [
     /for security purposes, you can only request this after (\d+) seconds/i,
-    'Please wait a moment before trying again.',
+    (match) => `Please wait ${match[1]} seconds before requesting another one.`,
   ],
 ]
 
 export function friendlyAuthError(message: string, fallback: string): string {
-  for (const [pattern, text] of FRIENDLY) {
-    if (pattern.test(message)) {
-      return text
-    }
+  for (const [pattern, replacement] of FRIENDLY) {
+    const match = message.match(pattern)
+    if (!match) continue
+
+    return typeof replacement === 'string' ? replacement : replacement(match)
   }
 
   return message || fallback

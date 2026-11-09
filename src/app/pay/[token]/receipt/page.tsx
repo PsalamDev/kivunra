@@ -5,6 +5,7 @@ import { InvoiceStatusBadge } from '@/components/invoice-status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDate, formatMoney } from '@/lib/format'
+import { getJournalName } from '@/lib/journal'
 import {
   completedCapturedAmount,
   invoiceAmountDue,
@@ -69,6 +70,7 @@ export default async function PublicReceiptPage({
   }
 
   const invoice = loaded.invoice
+  const journalName = await getJournalName(invoice.owner_user_id)
 
   if (invoice.status === 'Draft' || invoice.status === 'Cancelled') {
     notFound()
@@ -98,7 +100,7 @@ export default async function PublicReceiptPage({
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4 max-w-2xl">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-[#12243A]">Kivunra</h1>
+          <h1 className="text-2xl font-bold text-[#12243A]">{journalName}</h1>
           <p className="text-sm text-gray-500">Payment receipt</p>
         </div>
 
