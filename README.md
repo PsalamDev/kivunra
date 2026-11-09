@@ -147,7 +147,8 @@ provider, so two separate things must be set up:
    <p><a href="{{ .ConfirmationURL }}">Confirm my email</a></p>
    ```
 
-   `{{ .Token }}` is the 6-digit code; `{{ .ConfirmationURL }}` already carries
+   `{{ .Token }}` is the code; **Authentication → Providers → Email → Email OTP
+   Length** must be `6` to match this form. `{{ .ConfirmationURL }}` already carries
    the `emailRedirectTo` the app passes at signup.
 
 **Authentication → URL Configuration** must allow the deployment, otherwise the

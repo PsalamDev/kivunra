@@ -75,7 +75,7 @@ export default async function VerifyPage({
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-3 text-center text-2xl tracking-[0.4em] shadow-sm focus:border-[#0EA58B] focus:outline-none focus:ring-[#0EA58B]"
             />
             <p className="mt-1 text-xs text-gray-500">
-              The email also contains a confirmation link — either one works.
+              Enter the 6-digit code from the email. The email also contains a confirmation link.
             </p>
           </div>
           <button
