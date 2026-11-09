@@ -3,9 +3,9 @@ import { login } from './actions'
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ message?: string; error?: string }>
+  searchParams: Promise<{ message?: string; error?: string; next?: string }>
 }) {
-  const { message, error } = await searchParams
+  const { message, error, next } = await searchParams
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -25,6 +25,7 @@ export default async function LoginPage({
           </div>
         )}
         <form className="mt-8 space-y-6">
+          <input type="hidden" name="next" value={next ?? '/dashboard'} />
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email address

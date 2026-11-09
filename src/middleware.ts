@@ -62,7 +62,12 @@ export async function middleware(request: NextRequest) {
         request.nextUrl.pathname.startsWith('/budgets') ||
         request.nextUrl.pathname.startsWith('/settings')) {
       if (!user) {
-        return NextResponse.redirect(new URL('/login', request.url))
+        const loginUrl = new URL('/login', request.url)
+        loginUrl.searchParams.set(
+          'next',
+          `${request.nextUrl.pathname}${request.nextUrl.search}`
+        )
+        return NextResponse.redirect(loginUrl)
       }
     }
 
