@@ -227,12 +227,17 @@ Set `GROQ_API_KEY` to enable the AI assistant on **Invoices → Create Invoice**
 The optional `GROQ_MODEL` overrides the default model
 (`llama-3.3-70b-versatile`).
 
+Paste a short request, a client email, a project brief or a contract excerpt (up
+to 6000 characters). The assistant extracts the client, line items, currency,
+payment terms and a short payment note, then fills the editable form. It also
+returns a list of assumptions whenever it had to infer something, so the draft
+can be checked before saving. `Regenerate` re-runs the same source text.
+
 `POST /api/ai/invoice-draft` is authenticated and rate-limited to 20 drafts per
-user per hour. It sends the request plus the user's customer names to Groq,
+user per hour. It sends the source text plus the user's customer names to Groq,
 validates the JSON response with zod, matches the suggested customer to an
-existing one, and returns line items, currency and due date for the form. It
-never creates an invoice directly, and every attempt is recorded in
-`ai_interactions` for audit and rate limiting.
+existing one, and never creates an invoice directly. Every attempt is recorded
+in `ai_interactions` for audit and rate limiting.
 
 ## Invoice lifecycle
 

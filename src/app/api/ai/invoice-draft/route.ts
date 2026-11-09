@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
     due_in_days: draft.due_in_days,
     due_date: draft.due_date,
     notes: draft.notes,
+    assumptions: draft.assumptions,
     items: draft.items,
   }
 

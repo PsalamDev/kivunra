@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { formatDate, formatMoney } from '@/lib/format'
 
 export interface InvoiceFormCustomer {
   id: string
@@ -38,8 +39,19 @@ interface InvoiceDraftResponse {
     due_in_days: number | null
     due_date: string | null
     notes: string | null
+    assumptions?: string[]
     items: InvoiceFormItem[]
   }
+}
+
+interface AiDraftSummary {
+  customerName: string | null
+  currency: string
+  dueDate: string | null
+  itemCount: number
+  total: number
+  notes: string | null
+  assumptions: string[]
 }
 
 interface InvoiceFormProps {
@@ -58,6 +70,24 @@ interface InvoiceFormProps {
 const EMPTY_ITEM: InvoiceFormItem = { description: '', quantity: 1, unit_price: 0 }
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'NGN'] as const
+
+const AI_EXAMPLES = [
+  {
+    label: 'Website project',
+    prompt:
+      'Hi, this is Sarah at Acme Studio. Please invoice us for a 5-page website redesign at $2,400, due in 14 days.',
+  },
+  {
+    label: 'Monthly retainer',
+    prompt:
+      'Invoice Northwind for our monthly social media retainer: $800 per month for 3 months, Net 30.',
+  },
+  {
+    label: 'Brand package',
+    prompt:
+      'Create an invoice for a logo plus a 12-page brand guide for Bluebird Cafe. Total $1,500, due on receipt.',
+  },
+] as const
 
 export function InvoiceForm({
   mode,
@@ -84,7 +114,8 @@ export function InvoiceForm({
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
-  const [aiMessage, setAiMessage] = useState<string | null>(null)
+  const [aiNotice, setAiNotice] = useState<string | null>(null)
+  const [aiSummary, setAiSummary] = useState<AiDraftSummary | null>(null)
   const [unmatchedCustomer, setUnmatchedCustomer] = useState<string | null>(null)
   const [addingCustomer, setAddingCustomer] = useState(false)
 
@@ -94,13 +125,14 @@ export function InvoiceForm({
     const prompt = aiPrompt.trim()
 
     if (prompt.length < 10) {
-      setAiError('Describe the invoice in at least 10 characters.')
+      setAiError('Paste or describe the invoice in at least 10 characters.')
       return
     }
 
     setAiLoading(true)
     setAiError(null)
-    setAiMessage(null)
+    setAiNotice(null)
+    setAiSummary(null)
     setUnmatchedCustomer(null)
 
     try {
@@ -149,11 +181,23 @@ export function InvoiceForm({
         setUnmatchedCustomer(draft.customer_name)
       }
 
-      setAiMessage(
-        draft.notes
-          ? `Draft applied. AI note: ${draft.notes} Review the customer, items and due date before saving.`
-          : 'Draft applied. Review the customer, items and due date before saving.'
+      const draftTotal = draft.items.reduce(
+        (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unit_price) || 0),
+        0
       )
+
+      setAiSummary({
+        customerName: draft.customer_id
+          ? customers.find((customer) => customer.id === draft.customer_id)?.name ??
+            draft.customer_name
+          : draft.customer_name,
+        currency: draft.currency,
+        dueDate: draft.due_date,
+        itemCount: draft.items.length,
+        total: Math.round(draftTotal * 100) / 100,
+        notes: draft.notes,
+        assumptions: draft.assumptions ?? [],
+      })
     } catch (draftError) {
       console.error('Error drafting invoice:', draftError)
       setAiError('Could not draft the invoice. Please try again.')
@@ -187,7 +231,10 @@ export function InvoiceForm({
       setCustomers((current) => [data.customer as InvoiceFormCustomer, ...current])
       setCustomerId(data.customer.id)
       setUnmatchedCustomer(null)
-      setAiMessage(`Added ${data.customer.name} and selected them for this invoice.`)
+      setAiSummary((current) =>
+        current ? { ...current, customerName: data.customer?.name ?? current.customerName } : current
+      )
+      setAiNotice(`Added ${data.customer.name} and selected them for this invoice.`)
     } catch (addError) {
       console.error('Error adding customer:', addError)
       setAiError('Could not add that customer.')
@@ -305,20 +352,38 @@ export function InvoiceForm({
               Draft with AI
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              value={aiPrompt}
-              onChange={(event) => setAiPrompt(event.target.value)}
-              placeholder="Invoice Acme for a 5-page website redesign at $2,400, due in 14 days"
-              maxLength={2000}
-              rows={3}
-              disabled={aiLoading}
-              aria-label="Describe the invoice"
-            />
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Textarea
+                value={aiPrompt}
+                onChange={(event) => setAiPrompt(event.target.value)}
+                placeholder="Paste a client email, project brief or contract excerpt — or describe the invoice: &quot;Invoice Acme for a 5-page website redesign at $2,400, Net 14&quot;"
+                maxLength={6000}
+                rows={5}
+                disabled={aiLoading}
+                aria-label="Invoice source text"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-500">Try an example:</span>
+                {AI_EXAMPLES.map((example) => (
+                  <Button
+                    key={example.label}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAiPrompt(example.prompt)}
+                    disabled={aiLoading}
+                  >
+                    {example.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-gray-500">
-                Describe the work, customer, amount and payment terms. You review the draft before
-                creating anything.
+                Paste an email, brief or contract excerpt. AI extracts the client, line items,
+                currency and payment terms; you review everything before saving.
               </p>
               <Button
                 type="button"
@@ -327,7 +392,7 @@ export function InvoiceForm({
                 className="bg-[#0EA58B] hover:bg-[#0c9479]"
               >
                 <Sparkles className="mr-2 h-4 w-4" />
-                {aiLoading ? 'Drafting...' : 'Draft invoice'}
+                {aiLoading ? 'Drafting...' : aiSummary ? 'Regenerate' : 'Draft invoice'}
               </Button>
             </div>
 
@@ -340,12 +405,12 @@ export function InvoiceForm({
               </p>
             )}
 
-            {aiMessage && !aiError && (
+            {aiNotice && !aiError && (
               <p
                 role="status"
                 className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
               >
-                {aiMessage}
+                {aiNotice}
               </p>
             )}
 
@@ -364,6 +429,65 @@ export function InvoiceForm({
                 >
                   {addingCustomer ? 'Adding...' : `Add ${unmatchedCustomer}`}
                 </Button>
+              </div>
+            )}
+
+            {aiSummary && !aiError && (
+              <div
+                role="status"
+                className="space-y-3 rounded border border-green-200 bg-green-50 px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium text-green-900">
+                    Draft applied — review before saving
+                  </p>
+                  <p className="text-xs text-green-800">
+                    The AI filled the editable fields below. Check every value.
+                  </p>
+                </div>
+
+                <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                  <div>
+                    <dt className="text-green-700">Customer</dt>
+                    <dd className="font-medium text-green-900">
+                      {aiSummary.customerName ?? 'Not detected'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-green-700">Currency</dt>
+                    <dd className="font-medium text-green-900">{aiSummary.currency}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-green-700">Due</dt>
+                    <dd className="font-medium text-green-900">
+                      {aiSummary.dueDate ? formatDate(aiSummary.dueDate) : 'Not set'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-green-700">Total</dt>
+                    <dd className="font-medium text-green-900">
+                      {formatMoney(aiSummary.currency, aiSummary.total)} · {aiSummary.itemCount}{' '}
+                      {aiSummary.itemCount === 1 ? 'item' : 'items'}
+                    </dd>
+                  </div>
+                </dl>
+
+                {aiSummary.notes && (
+                  <p className="text-xs text-green-800">
+                    <span className="font-medium">Suggested note:</span> {aiSummary.notes}
+                  </p>
+                )}
+
+                {aiSummary.assumptions.length > 0 && (
+                  <div className="text-xs text-green-800">
+                    <p className="font-medium">Assumptions to check</p>
+                    <ul className="list-disc pl-5">
+                      {aiSummary.assumptions.map((assumption) => (
+                        <li key={assumption}>{assumption}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

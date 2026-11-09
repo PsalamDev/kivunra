@@ -1,4 +1,10 @@
-const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+
+/** Test-only override, mirroring BREVO_API_URL. */
+function groqEndpoint(): string {
+  const override = process.env.GROQ_API_URL?.trim()
+  return override || GROQ_URL
+}
 
 /** Override with GROQ_MODEL if this one is retired in your project. */
 export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile'
@@ -48,7 +54,7 @@ export async function createGroqCompletion(input: {
 
   const model = getGroqModel()
 
-  const response = await fetch(GROQ_ENDPOINT, {
+  const response = await fetch(groqEndpoint(), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
