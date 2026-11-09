@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
+import { AutomationKeyCard } from '@/components/automation-key-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { automationKeyConfigured, automationKeyCreatedAt } from '@/lib/automation'
 import { journalNameFromMetadata } from '@/lib/journal'
 import { createClient } from '@/lib/supabase/server'
 
@@ -34,6 +36,8 @@ export default async function SettingsPage({
   }
 
   const journalName = journalNameFromMetadata(user.user_metadata) ?? ''
+  const automationConfigured = automationKeyConfigured(user.user_metadata)
+  const automationCreatedAt = automationKeyCreatedAt(user.user_metadata)
   const savedMessage =
     saved === 'journal'
       ? 'Journal name saved. It will appear on new and existing public invoices.'
@@ -97,6 +101,8 @@ export default async function SettingsPage({
           </form>
         </CardContent>
       </Card>
+
+      <AutomationKeyCard configured={automationConfigured} createdAt={automationCreatedAt} />
 
       <Card>
         <CardHeader>
