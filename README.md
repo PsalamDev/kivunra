@@ -225,7 +225,7 @@ verified domain instead of a free mailbox improves placement.
 
 Set `GROQ_API_KEY` to enable the AI assistant on **Invoices → Create Invoice**.
 The optional `GROQ_MODEL` overrides the default model
-(`llama-3.3-70b-versatile`).
+(`openai/gpt-oss-120b`, a free-plan production model).
 
 Paste a short request, a client email, a project brief or a contract excerpt (up
 to 6000 characters). The assistant extracts the client, line items, currency,

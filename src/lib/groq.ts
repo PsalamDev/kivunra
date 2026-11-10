@@ -6,8 +6,12 @@ function groqEndpoint(): string {
   return override || GROQ_URL
 }
 
-/** Override with GROQ_MODEL if this one is retired in your project. */
-export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile'
+/**
+ * Groq moves models between tiers and retires them over time. This one is a
+ * production model on the free developer plan; override with GROQ_MODEL if it
+ * changes again.
+ */
+export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b'
 
 export function isGroqConfigured(): boolean {
   return Boolean(process.env.GROQ_API_KEY)
