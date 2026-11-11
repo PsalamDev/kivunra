@@ -210,6 +210,9 @@ Invoices must be published first, and invoices already paid in full are not
 re-sent. If the provider rejects the message the API returns the provider's
 reason.
 
+A customer created without an email can be given one later with **Edit** in the
+customer list; the next invoice email picks it up immediately.
+
 ### Verifying delivery
 
 A `2xx` response only means the provider accepted the message, not that it was

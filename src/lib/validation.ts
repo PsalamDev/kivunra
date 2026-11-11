@@ -32,5 +32,25 @@ export const updateInvoiceSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, 'No fields to update')
 
+const customerName = z.string().trim().min(1, 'Name is required').max(200)
+
+/** An empty string clears the address; anything else must look like an email. */
+const customerEmail = z
+  .string()
+  .trim()
+  .max(320)
+  .refine(
+    (value) => value === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    'Enter a valid email address'
+  )
+
+export const updateCustomerSchema = z
+  .object({
+    name: customerName.optional(),
+    email: customerEmail.nullish(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'No fields to update')
+
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>
 export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>
+export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>

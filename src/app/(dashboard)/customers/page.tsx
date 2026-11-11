@@ -21,6 +21,12 @@ export default function CustomersPage() {
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
+
   useEffect(() => {
     fetchCustomers()
   }, [])
@@ -60,6 +66,54 @@ export default function CustomersPage() {
       console.error('Error creating customer:', error)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const startEditing = (customer: Customer) => {
+    setEditingId(customer.id)
+    setEditName(customer.name)
+    setEditEmail(customer.email ?? '')
+    setEditError(null)
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditError(null)
+  }
+
+  const saveCustomer = async (id: string) => {
+    if (!editName.trim()) {
+      setEditError('Name is required')
+      return
+    }
+
+    setSavingId(id)
+    setEditError(null)
+
+    try {
+      const res = await fetch(`/api/customers/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, email: editEmail || null }),
+      })
+      const data = (await res.json().catch(() => null)) as
+        | { customer?: Customer; error?: string }
+        | null
+
+      if (!res.ok || !data?.customer) {
+        setEditError(data?.error || 'Could not update the customer')
+        return
+      }
+
+      setCustomers((current) =>
+        current.map((customer) => (customer.id === id ? (data.customer as Customer) : customer))
+      )
+      setEditingId(null)
+    } catch (error) {
+      console.error('Error updating customer:', error)
+      setEditError('Could not update the customer')
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -107,6 +161,11 @@ export default function CustomersPage() {
           <CardTitle>Customer List</CardTitle>
         </CardHeader>
         <CardContent>
+          {editError && (
+            <p role="alert" className="mb-3 text-sm text-red-700">
+              {editError}
+            </p>
+          )}
           {loading ? (
             <p className="text-gray-500">Loading...</p>
           ) : customers.length === 0 ? (
@@ -118,16 +177,69 @@ export default function CustomersPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {customers.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>{customer.email || '-'}</TableCell>
-                    <TableCell>{new Date(customer.created_at).toLocaleDateString()}</TableCell>
-                  </TableRow>
-                ))}
+                {customers.map((customer) =>
+                  editingId === customer.id ? (
+                    <TableRow key={customer.id}>
+                      <TableCell>
+                        <Input
+                          aria-label="Customer name"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          aria-label="Customer email"
+                          type="email"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          placeholder="customer@example.com"
+                        />
+                      </TableCell>
+                      <TableCell>{new Date(customer.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => saveCustomer(customer.id)}
+                            disabled={savingId === customer.id}
+                            className="bg-[#0EA58B] hover:bg-[#0c9479]"
+                          >
+                            {savingId === customer.id ? 'Saving...' : 'Save'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={cancelEditing}
+                            disabled={savingId === customer.id}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell>{customer.email || '-'}</TableCell>
+                      <TableCell>{new Date(customer.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => startEditing(customer)}
+                          disabled={savingId !== null}
+                        >
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                )}
               </TableBody>
             </Table>
           )}
