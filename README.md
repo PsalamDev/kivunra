@@ -206,9 +206,10 @@ balance and line items. The link is derived from the invoice id and
 `INVOICE_TOKEN_SECRET`; the browser never supplies a URL or amount. The owner's
 email is used as `Reply-To`.
 
-Invoices must be published first, and invoices already paid in full are not
-re-sent. If the provider rejects the message the API returns the provider's
-reason.
+Invoices must be published first. The **Email Invoice** button is hidden once an
+invoice is paid or cancelled, and the API refuses to re-send a paid invoice even
+if it is called directly. If the provider rejects the message the API returns the
+provider's reason.
 
 A customer created without an email can be given one later with **Edit** in the
 customer list; the next invoice email picks it up immediately.

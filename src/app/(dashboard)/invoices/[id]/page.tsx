@@ -486,24 +486,26 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 >
                   Copy Link
                 </Button>
-                <Button
-                  onClick={emailInvoice}
-                  disabled={emailing || !invoice.customers?.email}
-                  title={
-                    invoice.customers?.email
-                      ? undefined
-                      : 'Add an email address to this customer first'
-                  }
-                >
-                  {emailing ? 'Sending...' : 'Email Invoice'}
-                </Button>
+                {!isClosed && (
+                  <Button
+                    onClick={emailInvoice}
+                    disabled={emailing || !invoice.customers?.email}
+                    title={
+                      invoice.customers?.email
+                        ? undefined
+                        : 'Add an email address to this customer first'
+                    }
+                  >
+                    {emailing ? 'Sending...' : 'Email Invoice'}
+                  </Button>
+                )}
               </div>
             </div>
             {emailStatus && (
               <p className="mt-3 text-sm text-green-700">{emailStatus}</p>
             )}
             {emailError && <p className="mt-3 text-sm text-red-700">{emailError}</p>}
-            {!invoice.customers?.email && (
+            {!isClosed && !invoice.customers?.email && (
               <p className="mt-3 text-sm text-gray-500">
                 Add an email address to this customer to send the invoice.
               </p>
