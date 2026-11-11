@@ -115,6 +115,11 @@ hashed token as the pay link — showing completed payments, refunds, net paid
 and the remaining balance. Receipt links appear on the public invoice page and
 after a successful checkout.
 
+The same receipt is available as a PDF at `GET /api/pay/[token]/receipt`
+(generated with `pdf-lib`, no external service). The **Download PDF** button is
+shown to the customer on the receipt, success and pay pages, and to the owner on
+the invoice page; it is only served once at least one payment is completed.
+
 ## Accounts, journal name and confirmation codes
 
 Signing up asks for a **journal name**, email and password. The journal name is

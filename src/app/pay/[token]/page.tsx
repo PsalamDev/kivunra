@@ -206,6 +206,13 @@ export default async function PublicInvoicePage({
                 >
                   View receipt
                 </a>
+                <span className="mx-2 text-gray-300">·</span>
+                <a
+                  href={`/api/pay/${token}/receipt`}
+                  className="font-medium text-[#0EA58B] hover:underline"
+                >
+                  Download PDF
+                </a>
               </p>
             )}
           </CardContent>

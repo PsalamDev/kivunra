@@ -40,13 +40,14 @@ type SerializableInvoice = {
  */
 export function serializeInvoice<T extends SerializableInvoice>(invoice: T, origin: string) {
   const { public_token_hash, ...rest } = invoice
+  const base = origin.replace(/\/$/, '')
+  const token = public_token_hash && isInvoiceTokenConfigured() ? createInvoiceToken(invoice.id) : null
 
   return {
     ...rest,
-    public_url:
-      public_token_hash && isInvoiceTokenConfigured()
-        ? `${origin.replace(/\/$/, '')}/pay/${createInvoiceToken(invoice.id)}`
-        : null,
+    public_url: token ? `${base}/pay/${token}` : null,
+    receipt_url: token ? `${base}/pay/${token}/receipt` : null,
+    receipt_pdf_url: token ? `${base}/api/pay/${token}/receipt` : null,
   }
 }
 

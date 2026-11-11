@@ -188,11 +188,20 @@ export default async function PublicReceiptPage({
               </div>
             </div>
 
-            <p className="mt-6 text-center text-sm">
-              <a href={`/pay/${token}`} className="font-medium text-[#0EA58B] hover:underline">
+            <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <a
+                href={`/api/pay/${token}/receipt`}
+                className="inline-block rounded-lg bg-[#0EA58B] px-6 py-3 font-bold text-white hover:bg-[#0c9480]"
+              >
+                Download PDF
+              </a>
+              <a
+                href={`/pay/${token}`}
+                className="inline-block rounded-lg border border-gray-300 px-6 py-3 font-medium text-[#12243A] hover:bg-gray-50"
+              >
                 Back to invoice
               </a>
-            </p>
+            </div>
           </CardContent>
         </Card>
 

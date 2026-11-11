@@ -196,6 +196,14 @@ export default async function PaymentSuccessPage({
                 View receipt
               </a>
             )}
+            {hasPayment && (
+              <a
+                href={`/api/pay/${token}/receipt`}
+                className="inline-block rounded-lg border border-gray-300 px-6 py-3 font-medium text-[#12243A] hover:bg-gray-50"
+              >
+                Download PDF
+              </a>
+            )}
             <a
               href={`/pay/${token}`}
               className="inline-block rounded-lg border border-gray-300 px-6 py-3 font-medium text-[#12243A] hover:bg-gray-50"

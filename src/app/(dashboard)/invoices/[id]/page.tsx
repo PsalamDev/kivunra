@@ -50,6 +50,8 @@ interface Invoice {
   due_at: string | null
   created_at: string
   public_url: string | null
+  receipt_url?: string | null
+  receipt_pdf_url?: string | null
   customers?: { name: string; email: string } | null
   invoice_items: InvoiceItem[]
   payment_orders?: PaymentOrder[] | null
@@ -357,15 +359,25 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         <CardHeader>
           <div className="flex items-center justify-between gap-2">
             <CardTitle>Payment Summary</CardTitle>
-            {invoice.public_url && captures.length > 0 && (
-              <a
-                href={`${invoice.public_url}/receipt`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-medium text-[#0EA58B] hover:underline"
-              >
-                View receipt
-              </a>
+            {invoice.receipt_url && captures.length > 0 && (
+              <div className="flex items-center gap-3 text-sm">
+                <a
+                  href={invoice.receipt_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-[#0EA58B] hover:underline"
+                >
+                  View receipt
+                </a>
+                {invoice.receipt_pdf_url && (
+                  <a
+                    href={invoice.receipt_pdf_url}
+                    className="font-medium text-[#0EA58B] hover:underline"
+                  >
+                    Download PDF
+                  </a>
+                )}
+              </div>
             )}
           </div>
         </CardHeader>
