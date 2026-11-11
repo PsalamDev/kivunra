@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Kivunra">
+  <rect width="512" height="512" rx="112" fill="#12243A"/>
+  <path d="M128 384 L342 170" stroke="#0EA58B" stroke-width="56" stroke-linecap="round"/>
+  <path d="M300 128 L384 128 L384 212 Z" fill="#0EA58B"/>
+</svg>
