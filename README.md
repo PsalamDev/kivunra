@@ -248,48 +248,6 @@ validates the JSON response with zod, matches the suggested customer to an
 existing one, and never creates an invoice directly. Every attempt is recorded
 in `ai_interactions` for audit and rate limiting.
 
-## Zapier: email to draft invoice
-
-**Settings → Automation (Zapier)** generates an API key. The key is shown once
-and stored only as a SHA-256 hash in the owner's Supabase user metadata, so no
-database migration is required. Revoke or rotate it from the same card at any
-time; rotating invalidates the previous key immediately.
-
-In Zapier, create a Zap:
-
-1. **Trigger:** Gmail (or Outlook) → *New Email Matching Search*, for example
-   `to:invoices@yourdomain.com`.
-2. **Action:** Webhooks by Zapier → *POST*.
-   - URL: `https://your-app.vercel.app/api/automation/invoice-draft`
-   - Payload type: `json`
-   - Headers: `Authorization: Bearer <your key>`
-   - Data:
-     - `text` → the email body (plain text)
-     - `subject` → the email subject
-     - `from_email` → the sender address
-     - `external_id` → the message id (prevents duplicate drafts on retries)
-     - `create_customer` → `true` to add unknown senders to your customer list
-3. Test the action, then review the new **Draft** invoice in Kivunra.
-
-The endpoint is rate-limited to 30 drafts per hour. It matches an existing
-customer by sender email before asking the model, returns the invoice number,
-link and line items, and never publishes or emails anything — publishing stays
-a human decision. To extract a draft without creating it, send
-`"create_invoice": false`.
-
-```bash
-curl -X POST "https://your-app.vercel.app/api/automation/invoice-draft" \
-  -H "Authorization: Bearer $KIVUNRA_AUTOMATION_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Please invoice Acme Studio for the 5-page website redesign, $2,400, Net 14.",
-    "subject": "Website redesign",
-    "from_email": "sarah@acmestudio.com",
-    "external_id": "gmail-message-id",
-    "create_customer": true
-  }'
-```
-
 ## Billing calendar
 
 `/calendar` plots invoice due dates and completed PayPal captures on a
